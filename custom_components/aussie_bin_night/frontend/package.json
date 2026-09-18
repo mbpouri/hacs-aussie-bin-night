@@ -1,0 +1,8 @@
+{
+  "name": "aussie-bin-night-card",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node --check src/bin-night-card.js"
+  }
+}
