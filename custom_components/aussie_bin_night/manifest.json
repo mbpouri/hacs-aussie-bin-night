@@ -1,13 +1,17 @@
 {
+  "domain": "aussie_bin_night",
+  "name": "Aussie Bin Night",
   "codeowners": [
     "@mbpouri"
   ],
   "config_flow": true,
+  "dependencies": [
+    "http"
+  ],
   "documentation": "https://github.com/mbpouri/hacs-aussie-bin-night",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/mbpouri/hacs-aussie-bin-night/issues",
-  "name": "Aussie Bin Night",
   "requirements": [],
   "version": "0.1.0"
 }

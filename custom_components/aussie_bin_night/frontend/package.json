@@ -4,6 +4,6 @@
   "scripts": {
     "build": "node build.mjs",
     "check": "node --check src/bin-night-card.js",
-    "test": "node --test test/"
+    "test": "node --test \"test/*.test.mjs\""
   }
 }

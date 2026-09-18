@@ -11,4 +11,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: frenck/action-hassfest@v1
+      - uses: home-assistant/actions/hassfest@master
