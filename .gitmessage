@@ -1,0 +1,18 @@
+# <type>(<optional scope>): <short imperative summary>
+#
+# Types: feat, fix, docs, refactor, test, build, ci, chore, perf, style
+# Scope examples: api, config-flow, coordinator, sensor, card, frontend, docs
+#
+# Keep the subject concise (50 characters preferred; 72 maximum). Do not end it
+# with a period. Use the imperative mood: "add", not "added" or "adds".
+#
+# Explain what changed and why. Wrap body lines at 72 characters. Omit this
+# section for small, self-explanatory changes.
+#
+# BREAKING CHANGE: <describe any required user migration>
+# Fixes #<issue-number>
+#
+# Examples:
+# feat(card): add next collection summary
+# fix(api): handle councils without green waste
+# docs: explain dashboard resource setup

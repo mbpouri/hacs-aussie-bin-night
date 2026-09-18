@@ -1,0 +1,22 @@
+{
+  "title": "Aussie Bin Night",
+  "config": {
+    "abort": {
+      "already_configured": "This address is already configured."
+    },
+    "step": {
+      "user": {
+        "data": {
+          "address": "Street address",
+          "postcode": "Postcode"
+        },
+        "data_description": {
+          "address": "Enter your residential street address. Address lookup will be added after the collection-data provider is selected.",
+          "postcode": "Enter the four-digit Australian postcode for this address."
+        },
+        "description": "Enter the address whose bin collections you want to track.",
+        "title": "Add an address"
+      }
+    }
+  }
+}
