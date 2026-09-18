@@ -46,6 +46,8 @@ Configuration is done entirely through the UI (config flow) — no YAML required
 5. Choose which bin types you want sensors for (some councils only offer a subset)
 6. Done — sensors will appear under the integration's device page
 
+Moved house, or picked the wrong address? Go to **Settings → Devices & Services → Aussie Bin Night → ⋮ → Reconfigure** to search for a new address without removing and re-adding the integration.
+
 ### Options
 
 After setup, you can adjust via **Configure**:
@@ -73,8 +75,11 @@ Each sensor exposes attributes:
 - `days_until` — number of days until next collection
 - `collection_date` — ISO date of next collection
 - `reminder_time` — timestamp, the configured reminder lead time before the start of `collection_date`; use it as a `time_date` automation trigger
+- `following_collection_date` — ISO date of the collection after this one, when the schedule includes it
 - `council` — detected council/LGA name
 - `bin_colour` — lid colour, if known (useful for card icons)
+
+Sensors only ever go `unavailable` when the last refresh actually failed (a connection problem, rate limiting, or an unexpected provider response). If the address itself has no more scheduled collections, the sensor instead reports `unknown` and a repair issue is raised under **Settings → Repairs** — see [Troubleshooting](#-troubleshooting).
 
 ---
 
@@ -125,7 +130,7 @@ resources:
     type: module
 ```
 
-Then add to a dashboard:
+Then add a card to a dashboard, either by searching for **"Bin Night"** in the card picker and choosing your sensors from its visual editor, or with YAML:
 
 ```yaml
 type: custom:bin-night-card
@@ -134,6 +139,8 @@ entities:
   - sensor.bin_recycling
   - sensor.bin_garden
 ```
+
+The card shows each configured entity's name, next collection date, and a day countdown, with an "Unavailable" row for any entity that has no data.
 
 ---
 
@@ -149,15 +156,23 @@ The selected address, its coordinates, detected council ID, and chosen bin types
 are stored locally in Home Assistant's config entry so the integration can refresh
 the collection schedule. Raw address-search responses are not stored. The selected
 address details are sent to Bin Night Tonight only when looking up or refreshing
-the household schedule.
+the household schedule. The integration never asks for or stores an API key or
+other credential. Home Assistant's diagnostics download for this integration
+(**Settings → Devices & Services → Aussie Bin Night → Download diagnostics**)
+redacts the address, coordinates, and postcode; it keeps the council/LGA id and
+collection schedule, since those are shared by every household in that
+collection zone rather than identifying yours specifically.
 
 ---
 
 ## 🐛 Troubleshooting
 
 - **My address isn't found** — the address search relies on your council's published address list or geocoding; try entering just the street name and suburb
+- **I picked the wrong address, or moved house** — use **Settings → Devices & Services → Aussie Bin Night → ⋮ → Reconfigure** to search again; this keeps your automations and options intact
 - **Dates look wrong** — some councils shift collections around public holidays; check [Council coverage](https://binnighttonight.com/coverage) to see if that council's data source accounts for this
-- **Sensor shows "unavailable"** — check **Settings → Devices & Services → Aussie Bin Night → ⋮ → Reload**, and review the Home Assistant logs for this integration
+- **Sensor shows "unavailable"** — the last refresh failed (connection issue, or the provider is rate-limiting requests); it clears on its own once refreshes succeed again. Check **Settings → Devices & Services → Aussie Bin Night → ⋮ → Reload** and the Home Assistant logs for this integration if it persists
+- **Sensor shows "unknown" with no collection date** — the provider returned a valid but empty schedule for this address, which usually means it's dropped coverage; check **Settings → Repairs** for an actionable notice, and try **Reconfigure** to confirm the address
+- **"Unexpected response" repair issue** — the provider's API returned data this integration doesn't recognise, which usually means its API changed; please [open an issue](https://github.com/mbpouri/hacs-aussie-bin-night/issues) with the details
 
 ---
 
