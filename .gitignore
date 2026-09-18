@@ -1,8 +1,9 @@
-# Python
+# Python / Node.js
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+node_modules/
 
 # Home Assistant local development data
 config/

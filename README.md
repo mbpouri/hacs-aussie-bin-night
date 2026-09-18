@@ -96,11 +96,11 @@ automation:
 
 ## 🖼️ Lovelace Card (optional)
 
-A companion card is available in the `lovelace/` folder for a friendlier visual display. Add it as a resource:
+The integration bundles a companion card for a friendlier visual display. Home Assistant serves it directly, so add it as a dashboard resource:
 
 ```yaml
 resources:
-  - url: /hacsfiles/aussie-bin-night/bin-night-card.js
+  - url: /api/aussie_bin_night/static/bin-night-card.js
     type: module
 ```
 
@@ -122,10 +122,20 @@ All data are sourced from [Bin Night Tonight](https://binnighttonight.com/about/
 
 ---
 
+### Privacy
+
+The selected address, its coordinates, detected council ID, and chosen bin types
+are stored locally in Home Assistant's config entry so the integration can refresh
+the collection schedule. Raw address-search responses are not stored. The selected
+address details are sent to Bin Night Tonight only when looking up or refreshing
+the household schedule.
+
+---
+
 ## 🐛 Troubleshooting
 
 - **My address isn't found** — the address search relies on your council's published address list or geocoding; try entering just the street name and suburb
-- **Dates look wrong** — some councils shift collections around public holidays; check `COUNCILS.md` to see if that council's data source accounts for this
+- **Dates look wrong** — some councils shift collections around public holidays; check [Council coverage](https://binnighttonight.com/coverage) to see if that council's data source accounts for this
 - **Sensor shows "unavailable"** — check **Settings → Devices & Services → Aussie Bin Night → ⋮ → Reload**, and review the Home Assistant logs for this integration
 
 ---
