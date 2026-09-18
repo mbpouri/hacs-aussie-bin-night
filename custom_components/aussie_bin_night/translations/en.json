@@ -2,21 +2,80 @@
   "title": "Aussie Bin Night",
   "config": {
     "abort": {
-      "already_configured": "This address is already configured."
+      "already_configured": "This address is already configured.",
+      "reconfigure_successful": "The household address was updated."
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Bin Night Tonight.",
+      "invalid_address": "Choose an address from the search results.",
+      "invalid_response": "Bin Night Tonight returned an unexpected response.",
+      "no_addresses_found": "No matching Australian street addresses were found.",
+      "no_collections_found": "No bin collections were found for this address.",
+      "rate_limited": "Bin Night Tonight is rate-limiting requests. Wait a moment and try again."
     },
     "step": {
       "user": {
-        "data": {
-          "address": "Street address",
-          "postcode": "Postcode"
-        },
-        "data_description": {
-          "address": "Enter your residential street address. Address lookup will be added after the collection-data provider is selected.",
-          "postcode": "Enter the four-digit Australian postcode for this address."
-        },
-        "description": "Enter the address whose bin collections you want to track.",
-        "title": "Add an address"
+        "data": {"address": "Address"},
+        "data_description": {"address": "Start with your street number and name, then add your suburb or postcode."},
+        "description": "Search for the household address whose bin collections you want to track.",
+        "title": "Search for an address"
+      },
+      "select_address": {
+        "data": {"address": "Address"},
+        "description": "Choose the exact household address.",
+        "title": "Select an address"
+      },
+      "bin_types": {
+        "data": {"bin_types": "Bin types"},
+        "description": "Bin Night Tonight detected {council}. Choose the collection streams to add.",
+        "title": "Choose bin types"
+      },
+      "reconfigure": {
+        "data": {"address": "Address"},
+        "data_description": {"address": "Start with your street number and name, then add your suburb or postcode."},
+        "description": "Search for the new household address whose bin collections you want to track.",
+        "title": "Update the household address"
+      },
+      "reconfigure_select_address": {
+        "data": {"address": "Address"},
+        "description": "Choose the exact household address.",
+        "title": "Select an address"
+      },
+      "reconfigure_confirm": {
+        "data": {"bin_types": "Bin types"},
+        "description": "Bin Night Tonight detected {council}. Choose the collection streams to add.",
+        "title": "Choose bin types"
       }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "collection": {
+        "name": "{bin_type} collection"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "bin_types": "Bin types shown",
+          "reminder_lead_time": "Reminder lead time (hours)",
+          "update_interval": "Update interval (days)"
+        },
+        "description": "Choose how often collection dates refresh and which bin streams to show.",
+        "title": "Aussie Bin Night options"
+      }
+    }
+  },
+  "issues": {
+    "unsupported_address": {
+      "title": "No bin collections found for {address}",
+      "description": "Bin Night Tonight returned a response with no collection dates for this address, which usually means the provider no longer covers it. Confirm the address is correct, then use **Reconfigure** on the Aussie Bin Night integration to search again."
+    },
+    "invalid_response": {
+      "title": "Unexpected response from Bin Night Tonight for {address}",
+      "description": "The provider returned data this integration does not understand, which usually means its API changed. Please open an issue on the Aussie Bin Night GitHub repository describing this."
     }
   }
 }
