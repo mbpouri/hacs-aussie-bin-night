@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
@@ -15,13 +15,20 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import AussieBinNightCoordinator
-from .const import CONF_ADDRESS, CONF_BIN_TYPES, DOMAIN
+from .const import (
+    CONF_ADDRESS,
+    CONF_BIN_TYPES,
+    CONF_REMINDER_LEAD_TIME,
+    DEFAULT_REMINDER_LEAD_TIME_HOURS,
+    DOMAIN,
+)
 
 ATTR_COLLECTION_DATE = "collection_date"
 ATTR_COUNCIL = "council"
 ATTR_DAYS_UNTIL = "days_until"
 ATTR_BIN_COLOUR = "bin_colour"
 ATTR_FOLLOWING_COLLECTION_DATE = "following_collection_date"
+ATTR_REMINDER_TIME = "reminder_time"
 
 BIN_COLOURS = {
     "general": "red",
@@ -90,6 +97,11 @@ class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEn
         if event:
             attributes[ATTR_COLLECTION_DATE] = event.collection_date.isoformat()
             attributes[ATTR_DAYS_UNTIL] = (event.collection_date - self._today).days
+            lead_hours = int(
+                self._entry.options.get(CONF_REMINDER_LEAD_TIME, DEFAULT_REMINDER_LEAD_TIME_HOURS)
+            )
+            collection_start = dt_util.start_of_local_day(event.collection_date)
+            attributes[ATTR_REMINDER_TIME] = (collection_start - timedelta(hours=lead_hours)).isoformat()
             following_event = next(
                 (
                     candidate
