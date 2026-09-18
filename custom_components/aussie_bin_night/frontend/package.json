@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build": "node build.mjs",
-    "check": "node --check src/bin-night-card.js"
+    "check": "node --check src/bin-night-card.js",
+    "test": "node --test test/"
   }
 }

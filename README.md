@@ -50,11 +50,13 @@ Configuration is done entirely through the UI (config flow) — no YAML required
 
 After setup, you can adjust via **Configure**:
 
-| Option             | Description                                          | Default       |
-| ------------------ | ---------------------------------------------------- | ------------- |
-| Update interval    | How often to refresh schedule data                   | weekly        |
-| Reminder lead time | Hours before collection to mark sensor as "upcoming" | 12            |
-| Bin types shown    | Which bin sensors to create                          | All available |
+| Option             | Description                                                      | Default       |
+| ------------------ | ----------------------------------------------------------------- | ------------- |
+| Update interval    | How often to refresh schedule data                                | weekly        |
+| Reminder lead time | Hours before the collection date that `reminder_time` should fall | 12            |
+| Bin types shown    | Which bin sensors to create                                       | All available |
+
+The integration also schedules one extra refresh shortly before each `reminder_time`, so an automation firing on it sees up-to-date data even if a public holiday moved the collection since the last weekly poll.
 
 ---
 
@@ -70,12 +72,15 @@ Each sensor exposes attributes:
 
 - `days_until` — number of days until next collection
 - `collection_date` — ISO date of next collection
+- `reminder_time` — timestamp, the configured reminder lead time before the start of `collection_date`; use it as a `time_date` automation trigger
 - `council` — detected council/LGA name
 - `bin_colour` — lid colour, if known (useful for card icons)
 
 ---
 
 ## 🔔 Example Automation
+
+A simple day-based reminder:
 
 ```yaml
 automation:
@@ -90,6 +95,22 @@ automation:
         data:
           title: "🗑️ Put the bins out!"
           message: "General waste collection is tomorrow morning."
+```
+
+Or, to fire exactly at the configured reminder lead time instead of once a day out:
+
+```yaml
+automation:
+  - alias: "Bin night reminder (precise)"
+    trigger:
+      - platform: template
+        value_template: >
+          {{ now() >= (state_attr('sensor.bin_general', 'reminder_time') | as_datetime) }}
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "🗑️ Put the bins out!"
+          message: "General waste collection is coming up."
 ```
 
 ---

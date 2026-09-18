@@ -1,0 +1,8 @@
+{
+  "lgaId": "sample-city-council",
+  "events": [
+    { "date": "2026-09-22", "bins": ["general", "recycling"] },
+    { "date": "2026-09-29", "bins": ["general", "garden"] },
+    { "date": "2026-10-06", "bins": ["general", "recycling"] }
+  ]
+}

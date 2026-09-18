@@ -1,0 +1,32 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [144.9631, -37.8136] },
+      "properties": {
+        "feature_type": "address",
+        "full_address": "1 Example Street, Sample Suburb VIC 3000",
+        "context": {
+          "address": { "name": "1 Example Street" },
+          "postcode": { "name": "3000" },
+          "locality": { "name": "Sample Suburb" },
+          "region": { "name": "VIC" }
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [144.9631, -37.8136] },
+      "properties": {
+        "feature_type": "locality",
+        "full_address": "Sample Suburb VIC",
+        "context": {
+          "postcode": { "name": "3000" },
+          "locality": { "name": "Sample Suburb" },
+          "region": { "name": "VIC" }
+        }
+      }
+    }
+  ]
+}

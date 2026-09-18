@@ -1,4 +1,25 @@
-"""Bin collection sensors for Aussie Bin Night."""
+"""Bin collection sensors for Aussie Bin Night.
+
+Entity attribute contract for `sensor.bin_<bin_type>` (relied on by the bundled
+`bin-night-card.js`, which reads only entity state/attributes and never calls
+the Bin Night Tonight API itself; keep the two in sync if this contract changes):
+
+- State: an ISO date (`SensorDeviceClass.DATE`) for the next collection, or
+  `unknown` if the schedule currently has no upcoming event for this stream.
+  The entity is `unavailable` only when the last coordinator refresh failed
+  (connection, rate limit, or malformed response), never for a merely empty
+  schedule.
+- `collection_date` (str, ISO date): present only alongside a non-`unknown` state;
+  duplicates the native value for template convenience.
+- `days_until` (int): present only alongside a non-`unknown` state.
+- `reminder_time` (str, ISO datetime, local timezone): present only alongside a
+  non-`unknown` state; the configured reminder lead time before the start of
+  `collection_date`.
+- `following_collection_date` (str, ISO date, optional): the collection after
+  the current one, when the schedule includes it.
+- `council` (str): always present.
+- `bin_colour` (str, optional): present only for bin types with a known colour.
+"""
 
 from __future__ import annotations
 
