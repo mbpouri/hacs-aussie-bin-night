@@ -38,6 +38,7 @@ async def test_general_waste_sensor_reports_next_collection(hass):
     assert attributes["council_id"] == SAMPLE_SCHEDULE.council_id
     assert attributes["collection_date"] == SAMPLE_SCHEDULE.events[0].collection_date.isoformat()
     assert attributes["days_until"] == (SAMPLE_SCHEDULE.events[0].collection_date - dt_util.now().date()).days
+    assert attributes["bin_type"] == "general"
     assert attributes["bin_colour"] == "red"
     # events[1] is the next event after events[0] that still includes "general"
     assert attributes["following_collection_date"] == SAMPLE_SCHEDULE.events[1].collection_date.isoformat()
@@ -141,4 +142,36 @@ async def test_days_until_rolls_over_at_local_midnight(hass, freezer):
         after = hass.states.get("sensor.bin_general").attributes["days_until"]
 
     assert after == before - 1
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_a_stream_that_appears_later_gets_a_sensor(hass):
+    from datetime import date
+
+    from custom_components.aussie_bin_night.client import CollectionEvent, CollectionSchedule
+
+    def schedule(*bin_types):
+        return CollectionSchedule(
+            council_id="sample-city-council",
+            events=(CollectionEvent(date.today() + timedelta(days=3), bin_types),),
+        )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=sample_entry_data(bin_types=["general"], known_bin_types=["general"]),
+    )
+    entry.add_to_hass(hass)
+
+    with patch(CLIENT_PATH, return_value=FakeBinNightTonightClient(schedule=schedule("general"))):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        assert hass.states.get("sensor.bin_hard") is None
+
+    with patch(CLIENT_PATH, return_value=FakeBinNightTonightClient(schedule=schedule("general", "hard"))):
+        await hass.data[DOMAIN][entry.entry_id].async_refresh()
+        await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.bin_hard")
+    assert state is not None
+    assert state.attributes["bin_colour"] == "orange"
     await hass.config_entries.async_unload(entry.entry_id)

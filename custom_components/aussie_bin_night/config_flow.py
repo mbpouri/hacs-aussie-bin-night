@@ -19,10 +19,12 @@ from .client import (
     BinNightTonightRateLimitedError,
     CollectionSchedule,
 )
+from .coordinator import enabled_bin_types
 from .const import (
     CONF_ADDRESS,
     CONF_BIN_TYPES,
     CONF_COUNCIL_ID,
+    CONF_KNOWN_BIN_TYPES,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_POSTCODE,
@@ -169,6 +171,7 @@ class AussieBinNightConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_LONGITUDE: address.longitude,
                 CONF_COUNCIL_ID: self._schedule.council_id,
                 CONF_BIN_TYPES: user_input[CONF_BIN_TYPES],
+                CONF_KNOWN_BIN_TYPES: list(available),
             }
             unique_id = f"{address.latitude:.6f},{address.longitude:.6f}"
             if self._reconfigure:
@@ -177,7 +180,13 @@ class AussieBinNightConfigFlow(ConfigFlow, domain=DOMAIN):
                     if other_entry.entry_id != reconfigure_entry.entry_id and other_entry.unique_id == unique_id:
                         return self.async_abort(reason="already_configured")
                 await self.async_set_unique_id(unique_id)
-                return self.async_update_reload_and_abort(reconfigure_entry, data=data)
+                # Saved stream choices belong to the old address, so drop them.
+                options = {
+                    key: value
+                    for key, value in reconfigure_entry.options.items()
+                    if key not in (CONF_BIN_TYPES, CONF_KNOWN_BIN_TYPES)
+                }
+                return self.async_update_reload_and_abort(reconfigure_entry, data=data, options=options)
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
             return self.async_create_entry(title=address.display_name, data=data)
@@ -209,10 +218,14 @@ class AussieBinNightOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage update cadence, reminder timing, and shown bin streams."""
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self._entry.entry_id)
+        available = tuple(coordinator.data.available_bin_types) if coordinator else ()
+        # Offer every stream the provider currently returns, plus any already enabled.
+        offered = list(dict.fromkeys([*enabled_bin_types(self._entry, available), *available]))
 
-        available = self._entry.data[CONF_BIN_TYPES]
+        if user_input is not None:
+            return self.async_create_entry(title="", data={**user_input, CONF_KNOWN_BIN_TYPES: offered})
+
         defaults = self._entry.options
         return self.async_show_form(
             step_id="init",
@@ -232,9 +245,9 @@ class AussieBinNightOptionsFlow(OptionsFlow):
                     ),
                     vol.Required(
                         CONF_BIN_TYPES,
-                        default=defaults.get(CONF_BIN_TYPES, available),
+                        default=enabled_bin_types(self._entry, available),
                     ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(options=available, multiple=True, mode=selector.SelectSelectorMode.LIST)
+                        selector.SelectSelectorConfig(options=offered, multiple=True, mode=selector.SelectSelectorMode.LIST)
                     ),
                 }
             ),

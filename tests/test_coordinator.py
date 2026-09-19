@@ -20,6 +20,7 @@ from custom_components.aussie_bin_night.coordinator import (
     ISSUE_INVALID_RESPONSE,
     ISSUE_UNSUPPORTED_ADDRESS,
     AussieBinNightCoordinator,
+    enabled_bin_types,
 )
 
 from .conftest import SAMPLE_SCHEDULE, FakeBinNightTonightClient, sample_entry_data
@@ -152,3 +153,27 @@ async def test_cancel_reminder_refresh_is_a_no_op_when_nothing_is_scheduled(hass
     coordinator = AussieBinNightCoordinator(hass, entry)
 
     coordinator.async_cancel_reminder_refresh()
+
+
+def test_enabled_bin_types_adds_streams_the_user_was_never_shown():
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=sample_entry_data(bin_types=["general", "recycling"], known_bin_types=["general", "recycling"]),
+    )
+
+    assert enabled_bin_types(entry, ("general", "recycling", "hard")) == ["general", "recycling", "hard"]
+
+
+def test_enabled_bin_types_keeps_deliberately_deselected_streams_off():
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=sample_entry_data(bin_types=["general"], known_bin_types=["general", "glass"]),
+    )
+
+    assert enabled_bin_types(entry, ("general", "glass")) == ["general"]
+
+
+def test_enabled_bin_types_falls_back_to_chosen_types_for_older_entries():
+    entry = MockConfigEntry(domain=DOMAIN, data=sample_entry_data(bin_types=["general", "recycling"]))
+
+    assert enabled_bin_types(entry, ("general", "recycling")) == ["general", "recycling"]

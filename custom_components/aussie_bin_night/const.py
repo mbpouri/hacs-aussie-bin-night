@@ -4,6 +4,7 @@ DOMAIN = "aussie_bin_night"
 
 CONF_ADDRESS = "address"
 CONF_BIN_TYPES = "bin_types"
+CONF_KNOWN_BIN_TYPES = "known_bin_types"
 CONF_COUNCIL_ID = "council_id"
 CONF_LATITUDE = "latitude"
 CONF_LONGITUDE = "longitude"

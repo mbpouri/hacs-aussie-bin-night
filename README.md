@@ -69,6 +69,7 @@ The integration also schedules one extra refresh shortly before each `reminder_t
 | `sensor.bin_general`   | Date of next general waste collection                       |
 | `sensor.bin_recycling` | Date of next recycling collection                           |
 | `sensor.bin_garden`    | Date of next green waste/FOGO collection (where applicable) |
+| `sensor.bin_glass`, `sensor.bin_hard`, `sensor.bin_fogo` | Glass, hard-waste and food-and-garden-organics collections, where your council offers them |
 
 Each sensor exposes attributes:
 
@@ -78,7 +79,10 @@ Each sensor exposes attributes:
 - `following_collection_date` — ISO date of the collection after this one, when the schedule includes it
 - `council` — detected council/LGA name, e.g. "Sample City Council"
 - `council_id` — the provider's raw LGA identifier, e.g. `sample-city-council`
+- `bin_type` — the provider's raw stream name, e.g. `general`
 - `bin_colour` — lid colour, if known (useful for card icons)
+
+One sensor is created for every bin stream Bin Night Tonight returns for your address, so you only see the ones your council actually collects. If a new stream appears later (for example an occasional hard-waste collection), its sensor is added automatically; streams you deselected in **Configure** stay off.
 
 Sensors only ever go `unavailable` when the last refresh actually failed (a connection problem, rate limiting, or an unexpected provider response). If the address itself has no more scheduled collections, the sensor instead reports `unknown` and a repair issue is raised under **Settings → Repairs** — see [Troubleshooting](#-troubleshooting).
 
@@ -123,19 +127,26 @@ automation:
 
 ## 🖼️ Lovelace Card (optional)
 
-The integration bundles a companion card and loads it automatically on every dashboard, so there is no resource to add by hand. After installing or updating the integration, restart Home Assistant and hard-refresh your browser (Ctrl+F5, or clear the app cache on mobile) so the card appears in the picker.
+The integration bundles a companion card and loads it automatically on every dashboard, so there is no resource to add by hand. After installing or updating the integration, restart Home Assistant and refresh your browser so the card appears in the picker. The card's URL changes whenever the card does, so browsers pick up updates automatically.
 
-Add a card to a dashboard, either by searching for **"Bin Night"** in the card picker and choosing your sensors from its visual editor, or with YAML:
+Add a card to a dashboard by searching for **"Bin Night"** in the card picker, or with YAML. It needs no configuration: with no `entities` set, it finds your Aussie Bin Night sensors itself and lists them soonest collection first.
+
+```yaml
+type: custom:bin-night-card
+```
+
+To show only certain sensors, list them:
 
 ```yaml
 type: custom:bin-night-card
 entities:
   - sensor.bin_general
   - sensor.bin_recycling
-  - sensor.bin_garden
 ```
 
-The card shows each configured entity's name, next collection date, and a day countdown, with an "Unavailable" row for any entity that has no data.
+The visual editor's sensor picker only offers this integration's sensors.
+
+The card shows one row per bin with its next collection, soonest first: a shaded bin icon with a lid in the stream's colour, the stream name (for example "General waste"), the date (for example "Tuesday 22 September"), and a countdown ("Today", or a number with "days away"). A sensor with no data is listed at the end as "Unavailable".
 
 ---
 

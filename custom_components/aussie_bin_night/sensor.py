@@ -19,6 +19,7 @@ the Bin Night Tonight API itself; keep the two in sync if this contract changes)
   the current one, when the schedule includes it.
 - `council` (str): readable council name, e.g. "Sample City Council"; always present.
 - `council_id` (str): the provider's raw LGA id, e.g. "sample-city-council"; always present.
+- `bin_type` (str): the provider's raw stream name, e.g. "general"; always present.
 - `bin_colour` (str, optional): present only for bin types with a known colour.
 """
 
@@ -37,10 +38,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .coordinator import AussieBinNightCoordinator
+from .coordinator import AussieBinNightCoordinator, enabled_bin_types
 from .const import (
     CONF_ADDRESS,
-    CONF_BIN_TYPES,
     CONF_REMINDER_LEAD_TIME,
     DEFAULT_REMINDER_LEAD_TIME_HOURS,
     DOMAIN,
@@ -51,6 +51,7 @@ ATTR_COUNCIL = "council"
 ATTR_COUNCIL_ID = "council_id"
 ATTR_DAYS_UNTIL = "days_until"
 ATTR_BIN_COLOUR = "bin_colour"
+ATTR_BIN_TYPE = "bin_type"
 ATTR_FOLLOWING_COLLECTION_DATE = "following_collection_date"
 ATTR_REMINDER_TIME = "reminder_time"
 
@@ -60,6 +61,7 @@ BIN_COLOURS = {
     "garden": "dark green",
     "fogo": "lime green",
     "glass": "purple",
+    "hard": "orange",
 }
 
 
@@ -70,10 +72,20 @@ async def async_setup_entry(
 ) -> None:
     """Add collection-date sensors for the configured bin streams."""
     coordinator: AussieBinNightCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        BinCollectionSensor(coordinator, entry, bin_type)
-        for bin_type in entry.options.get(CONF_BIN_TYPES, entry.data[CONF_BIN_TYPES])
-    )
+    added: set[str] = set()
+
+    @callback
+    def _async_add_new_sensors() -> None:
+        new = [
+            bin_type
+            for bin_type in enabled_bin_types(entry, coordinator.data.available_bin_types)
+            if bin_type not in added
+        ]
+        added.update(new)
+        async_add_entities(BinCollectionSensor(coordinator, entry, bin_type) for bin_type in new)
+
+    _async_add_new_sensors()
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_new_sensors))
 
 
 class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEntity):
@@ -135,6 +147,7 @@ class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEn
             ATTR_ATTRIBUTION: "Data provided by Bin Night Tonight",
             ATTR_COUNCIL: self.coordinator.data.council_name,
             ATTR_COUNCIL_ID: self.coordinator.data.council_id,
+            ATTR_BIN_TYPE: self._bin_type,
         }
         if event:
             attributes[ATTR_COLLECTION_DATE] = event.collection_date.isoformat()

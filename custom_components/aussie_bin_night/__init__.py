@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from homeassistant.components.frontend import add_extra_js_url
@@ -10,7 +11,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
-from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN, STATIC_URL
 from .coordinator import ISSUE_INVALID_RESPONSE, ISSUE_UNSUPPORTED_ADDRESS, AussieBinNightCoordinator
@@ -26,9 +26,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             [StaticPathConfig(STATIC_URL, str(Path(__file__).parent / "static"), False)]
         )
         # Load the card on every dashboard so it shows up in the card picker without
-        # a manual resource entry; the version query string busts stale browser caches.
-        integration = await async_get_integration(hass, DOMAIN)
-        add_extra_js_url(hass, f"{STATIC_URL}/bin-night-card.js?v={integration.version}")
+        # a manual resource entry. The query string is a hash of the file itself, so
+        # browsers refetch it whenever it changes, even within one integration version.
+        card = Path(__file__).parent / "static" / "bin-night-card.js"
+        digest = await hass.async_add_executor_job(lambda: hashlib.sha256(card.read_bytes()).hexdigest()[:12])
+        add_extra_js_url(hass, f"{STATIC_URL}/bin-night-card.js?v={digest}")
         domain_data["static_path_registered"] = True
 
     coordinator = AussieBinNightCoordinator(hass, entry)

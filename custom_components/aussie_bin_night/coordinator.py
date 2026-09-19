@@ -22,12 +22,28 @@ from .client import (
     address_from_config,
 )
 from .const import (
+    CONF_BIN_TYPES,
+    CONF_KNOWN_BIN_TYPES,
     CONF_REMINDER_LEAD_TIME,
     CONF_UPDATE_INTERVAL,
     DEFAULT_REMINDER_LEAD_TIME_HOURS,
     DEFAULT_UPDATE_INTERVAL_DAYS,
     DOMAIN,
 )
+
+def enabled_bin_types(entry: ConfigEntry, available: tuple[str, ...]) -> list[str]:
+    """Return the bin streams that should have a sensor.
+
+    That is every stream the user chose, plus any stream the provider offers that
+    the user has never been shown (not in the known set), so a stream that appears
+    later, such as an occasional hard-waste collection, gets a sensor by default.
+    A stream the user deliberately deselected stays off because saving the options
+    records everything they were shown as known.
+    """
+    chosen = list(entry.options.get(CONF_BIN_TYPES, entry.data[CONF_BIN_TYPES]))
+    known = set(entry.options.get(CONF_KNOWN_BIN_TYPES, entry.data.get(CONF_KNOWN_BIN_TYPES, chosen)))
+    return chosen + [bin_type for bin_type in available if bin_type not in known and bin_type not in chosen]
+
 
 ISSUE_UNSUPPORTED_ADDRESS = "unsupported_address"
 ISSUE_INVALID_RESPONSE = "invalid_response"
