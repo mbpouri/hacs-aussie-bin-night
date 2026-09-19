@@ -1,4 +1,4 @@
-# 🗑️ Aussie Bin Night
+# Aussie Bin Night
 
 A custom [Home Assistant](https://www.home-assistant.io/) integration that lets you pick your home address anywhere in Australia and shows you when your next kerbside household bin collection is — general waste, recycling, and green waste/FOGO, depending on what your local council collects.
 
@@ -52,7 +52,7 @@ Moved house, or picked the wrong address? Go to **Settings → Devices & Service
 
 After setup, you can adjust via **Configure**:
 
-| Option             | Description                                                      | Default       |
+| Option             | Description                                                       | Default       |
 | ------------------ | ----------------------------------------------------------------- | ------------- |
 | Update interval    | How often to refresh schedule data                                | weekly        |
 | Reminder lead time | Hours before the collection date that `reminder_time` should fall | 12            |
@@ -123,15 +123,9 @@ automation:
 
 ## 🖼️ Lovelace Card (optional)
 
-The integration bundles a companion card for a friendlier visual display. Home Assistant serves it directly, so add it as a dashboard resource:
+The integration bundles a companion card and loads it automatically on every dashboard, so there is no resource to add by hand. After installing or updating the integration, restart Home Assistant and hard-refresh your browser (Ctrl+F5, or clear the app cache on mobile) so the card appears in the picker.
 
-```yaml
-resources:
-  - url: /api/aussie_bin_night/static/bin-night-card.js
-    type: module
-```
-
-Then add a card to a dashboard, either by searching for **"Bin Night"** in the card picker and choosing your sensors from its visual editor, or with YAML:
+Add a card to a dashboard, either by searching for **"Bin Night"** in the card picker and choosing your sensors from its visual editor, or with YAML:
 
 ```yaml
 type: custom:bin-night-card

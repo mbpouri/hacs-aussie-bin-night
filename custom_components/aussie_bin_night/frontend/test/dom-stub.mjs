@@ -31,6 +31,9 @@ export function installDomStub() {
     define(name, ctor) {
       definitions.set(name, ctor);
     },
+    get(name) {
+      return definitions.get(name);
+    },
   };
   globalThis.window = globalThis;
   globalThis.document = {

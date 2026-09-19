@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN, STATIC_URL
 from .coordinator import ISSUE_INVALID_RESPONSE, ISSUE_UNSUPPORTED_ADDRESS, AussieBinNightCoordinator
@@ -23,6 +25,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hass.http.async_register_static_paths(
             [StaticPathConfig(STATIC_URL, str(Path(__file__).parent / "static"), False)]
         )
+        # Load the card on every dashboard so it shows up in the card picker without
+        # a manual resource entry; the version query string busts stale browser caches.
+        integration = await async_get_integration(hass, DOMAIN)
+        add_extra_js_url(hass, f"{STATIC_URL}/bin-night-card.js?v={integration.version}")
         domain_data["static_path_registered"] = True
 
     coordinator = AussieBinNightCoordinator(hass, entry)

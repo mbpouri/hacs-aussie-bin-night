@@ -47,6 +47,10 @@ class BinNightCard extends HTMLElement {
   _escapeAttr(value) { return String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 }
 
-customElements.define("bin-night-card", BinNightCard);
-window.customCards = window.customCards || [];
-window.customCards.push({ type:"bin-night-card", name:"Bin Night", description:"Shows the next household bin collections and their countdowns.", preview:false });
+// The integration loads this module automatically, but a manually added dashboard
+// resource would load it a second time, and redefining an element throws.
+if (!customElements.get("bin-night-card")) {
+  customElements.define("bin-night-card", BinNightCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type:"bin-night-card", name:"Bin Night", description:"Shows the next household bin collections and their countdowns.", preview:false });
+}
