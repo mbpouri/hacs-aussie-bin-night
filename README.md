@@ -1,3 +1,5 @@
+![Aussie Bin Night logo](custom_components/aussie_bin_night/brand/icon.png)
+
 # Aussie Bin Night
 
 A custom [Home Assistant](https://www.home-assistant.io/) integration that lets you pick your home address anywhere in Australia and shows you when your next kerbside household bin collection is — general waste, recycling, and green waste/FOGO, depending on what your local council collects.
@@ -13,6 +15,8 @@ Distributed via [HACS](https://hacs.xyz/) as a custom repository.
 - 🔔 **Automation-friendly** — trigger notifications the night before collection day
 - 🖼️ **Lovelace card support** — optional companion card showing a friendly bin-icon countdown
 - 🔁 **Auto-refresh** — polls council data sources to stay in sync with schedule changes (public holidays, roadworks, etc.)
+
+![The Bin Night card listing General waste in 3 days and Recycling in 10 days](custom_components/aussie_bin_night/brand/screenshot-card.png)
 
 ---
 
@@ -86,6 +90,8 @@ One sensor is created for every bin stream Bin Night Tonight returns for your ad
 
 Sensors only ever go `unavailable` when the last refresh actually failed (a connection problem, rate limiting, or an unexpected provider response). If the address itself has no more scheduled collections, the sensor instead reports `unknown` and a repair issue is raised under **Settings → Repairs** — see [Troubleshooting](#-troubleshooting).
 
+![Attributes of sensor.bin_general in Developer Tools](<custom_components/aussie_bin_night/brand/screenshot-sensor-attributes.png>)
+
 ---
 
 ## 🔔 Example Automation
@@ -145,6 +151,14 @@ entities:
 ```
 
 The visual editor's sensor picker only offers this integration's sensors.
+
+The card picker shows a live preview of the card. Until the integration has any sensors, the card (and its preview) shows clearly labelled sample data instead of an empty box.
+
+![The Bin Night card in the card picker, showing a live preview](<custom_components/aussie_bin_night/brand/screenshot-card-picker.png>)
+
+The visual editor lets you pick specific sensors, and shows the result as you change them:
+
+![The Bin Night card's visual editor](<custom_components/aussie_bin_night/brand/screenshot-card-editor.png>)
 
 The card shows one row per bin with its next collection, soonest first: a shaded bin icon with a lid in the stream's colour, the stream name (for example "General waste"), the date (for example "Tuesday 22 September"), and a countdown ("Today", or a number with "days away"). A sensor with no data is listed at the end as "Unavailable".
 
