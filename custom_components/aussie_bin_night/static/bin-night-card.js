@@ -74,10 +74,15 @@ class BinNightCard extends HTMLElement {
       entries.push({ id, date, days: Number.isFinite(days) ? days : null, a });
     }
     entries.sort((x, y) => x.date.localeCompare(y.date) || this._label(x.id, x.a).localeCompare(this._label(y.id, y.a)));
-    const rows = entries.map((e) => this._row(e));
-    rows.push(...unavailable.map((id) => this._unavailableRow(id)));
-    if (!rows.length) rows.push(`<li class="row" aria-label="No Aussie Bin Night sensors found"><div></div><div class="info"><div class="empty">No Aussie Bin Night sensors found. Set up the integration first.</div></div><div></div></li>`);
-    return rows;
+    if (!entries.length && !unavailable.length) return [...this._sampleEntries().map((e) => this._row(e)), `<li class="row" aria-label="Sample data. No Aussie Bin Night sensors found."><div></div><div class="info"><div class="empty">Sample data. Set up the Aussie Bin Night integration to see your own collections.</div></div><div></div></li>`];
+    return [...entries.map((e) => this._row(e)), ...unavailable.map((id) => this._unavailableRow(id))];
+  }
+
+  // Shown when there are no sensors, so the card picker preview and a card added
+  // before setup still look like something instead of an empty box.
+  _sampleEntries() {
+    const iso = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-"); };
+    return [["general", "red", 2], ["recycling", "yellow", 5], ["garden", "dark green", 9]].map(([bin_type, bin_colour, days]) => ({ id: `sensor.bin_${bin_type}`, date: iso(days), days, a: { bin_type, bin_colour } }));
   }
 
   _entityIds() {
@@ -140,5 +145,5 @@ class BinNightCard extends HTMLElement {
 if (!customElements.get("bin-night-card")) {
   customElements.define("bin-night-card", BinNightCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type:"bin-night-card", name:"Bin Night", description:"Shows your upcoming household bin collections with day countdowns.", preview:false });
+  window.customCards.push({ type:"bin-night-card", name:"Bin Night", description:"Shows your upcoming household bin collections with day countdowns.", preview:true });
 }

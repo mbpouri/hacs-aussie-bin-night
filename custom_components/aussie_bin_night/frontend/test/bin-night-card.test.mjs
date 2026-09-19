@@ -133,10 +133,22 @@ test("shows unavailable sensors after the collections instead of dropping them",
   assert.equal((html.match(/Unavailable/g) || []).length, 2);
 });
 
-test("shows a hint when discovery finds nothing", () => {
+test("shows labelled sample data when there are no sensors, so the picker preview is not empty", () => {
   const card = createCard({});
   card.hass = { states: { "light.kitchen": { state: "on", attributes: {} } } };
-  assert.match(card.shadowRoot.innerHTML, /No Aussie Bin Night sensors found/);
+  assert.deepEqual(names(card), ["General waste", "Recycling", "Garden organics"]);
+  assert.match(card.shadowRoot.innerHTML, /Sample data/);
+});
+
+test("does not show sample data next to real sensors", () => {
+  const card = createCard({});
+  card.hass = { states: { "sensor.bin_general": sensor("general", "2026-09-22", 3) } };
+  assert.deepEqual(names(card), ["General waste"]);
+  assert.doesNotMatch(card.shadowRoot.innerHTML, /Sample data/);
+});
+
+test("is registered with a live preview in the card picker", () => {
+  assert.equal(window.customCards.find((entry) => entry.type === "bin-night-card").preview, true);
 });
 
 test("rejects malformed configuration", () => {
