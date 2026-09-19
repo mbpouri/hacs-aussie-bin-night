@@ -57,6 +57,11 @@ class CollectionSchedule:
     events: tuple[CollectionEvent, ...]
 
     @property
+    def council_name(self) -> str:
+        """Return a readable council name derived from the provider's LGA id."""
+        return self.council_id.replace("-", " ").title()
+
+    @property
     def available_bin_types(self) -> tuple[str, ...]:
         """Return distinct collection streams in API order."""
         return tuple(dict.fromkeys(bin_type for event in self.events for bin_type in event.bin_types))

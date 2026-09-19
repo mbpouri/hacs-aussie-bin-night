@@ -17,22 +17,24 @@ the Bin Night Tonight API itself; keep the two in sync if this contract changes)
   `collection_date`.
 - `following_collection_date` (str, ISO date, optional): the collection after
   the current one, when the schedule includes it.
-- `council` (str): always present.
+- `council` (str): readable council name, e.g. "Sample City Council"; always present.
+- `council_id` (str): the provider's raw LGA id, e.g. "sample-city-council"; always present.
 - `bin_colour` (str, optional): present only for bin types with a known colour.
 """
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ATTRIBUTION
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import AussieBinNightCoordinator
@@ -46,6 +48,7 @@ from .const import (
 
 ATTR_COLLECTION_DATE = "collection_date"
 ATTR_COUNCIL = "council"
+ATTR_COUNCIL_ID = "council_id"
 ATTR_DAYS_UNTIL = "days_until"
 ATTR_BIN_COLOUR = "bin_colour"
 ATTR_FOLLOWING_COLLECTION_DATE = "following_collection_date"
@@ -101,6 +104,23 @@ class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEn
             model="Household bin collection schedule",
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Re-evaluate at local midnight so the date and `days_until` roll over daily.
+
+        The coordinator only refreshes about weekly, but this sensor's state is
+        derived from today's date, so it must be rewritten each day without
+        another provider request.
+        """
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_track_time_change(self.hass, self._async_handle_midnight, hour=0, minute=0, second=0)
+        )
+
+    @callback
+    def _async_handle_midnight(self, _now: datetime) -> None:
+        """Write the state again now that the local date has changed."""
+        self.async_write_ha_state()
+
     @property
     def native_value(self) -> date | None:
         """Return the next collection date for this bin type."""
@@ -113,7 +133,8 @@ class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEn
         event = self._next_event
         attributes: dict[str, Any] = {
             ATTR_ATTRIBUTION: "Data provided by Bin Night Tonight",
-            ATTR_COUNCIL: self.coordinator.data.council_id,
+            ATTR_COUNCIL: self.coordinator.data.council_name,
+            ATTR_COUNCIL_ID: self.coordinator.data.council_id,
         }
         if event:
             attributes[ATTR_COLLECTION_DATE] = event.collection_date.isoformat()

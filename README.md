@@ -72,11 +72,12 @@ The integration also schedules one extra refresh shortly before each `reminder_t
 
 Each sensor exposes attributes:
 
-- `days_until` — number of days until next collection
+- `days_until` — number of days until next collection; recalculated at local midnight each day, without contacting the provider
 - `collection_date` — ISO date of next collection
 - `reminder_time` — timestamp, the configured reminder lead time before the start of `collection_date`; use it as a `time_date` automation trigger
 - `following_collection_date` — ISO date of the collection after this one, when the schedule includes it
-- `council` — detected council/LGA name
+- `council` — detected council/LGA name, e.g. "Sample City Council"
+- `council_id` — the provider's raw LGA identifier, e.g. `sample-city-council`
 - `bin_colour` — lid colour, if known (useful for card icons)
 
 Sensors only ever go `unavailable` when the last refresh actually failed (a connection problem, rate limiting, or an unexpected provider response). If the address itself has no more scheduled collections, the sensor instead reports `unknown` and a repair issue is raised under **Settings → Repairs** — see [Troubleshooting](#-troubleshooting).

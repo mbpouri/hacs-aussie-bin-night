@@ -191,7 +191,7 @@ class AussieBinNightConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 }
             ),
-            description_placeholders={"council": self._schedule.council_id.replace("-", " ").title()},
+            description_placeholders={"council": self._schedule.council_name},
         )
 
     @property

@@ -4,7 +4,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.aussie_bin_night.const import CONF_REMINDER_LEAD_TIME, DOMAIN
 from custom_components.aussie_bin_night.coordinator import AussieBinNightCoordinator
@@ -34,7 +34,8 @@ async def test_general_waste_sensor_reports_next_collection(hass):
     assert sensor.native_value == SAMPLE_SCHEDULE.events[0].collection_date
 
     attributes = sensor.extra_state_attributes
-    assert attributes["council"] == SAMPLE_SCHEDULE.council_id
+    assert attributes["council"] == "Sample City Council"
+    assert attributes["council_id"] == SAMPLE_SCHEDULE.council_id
     assert attributes["collection_date"] == SAMPLE_SCHEDULE.events[0].collection_date.isoformat()
     assert attributes["days_until"] == (SAMPLE_SCHEDULE.events[0].collection_date - dt_util.now().date()).days
     assert attributes["bin_colour"] == "red"
@@ -102,7 +103,8 @@ async def test_sensor_has_no_upcoming_date_when_the_stream_is_absent(hass):
     assert "collection_date" not in attributes
     assert "days_until" not in attributes
     assert "reminder_time" not in attributes
-    assert attributes["council"] == SAMPLE_SCHEDULE.council_id
+    assert attributes["council"] == "Sample City Council"
+    assert attributes["council_id"] == SAMPLE_SCHEDULE.council_id
     assert attributes["bin_colour"] == "purple"
 
     coordinator.async_cancel_reminder_refresh()
@@ -119,3 +121,24 @@ async def test_sensor_is_attached_to_a_household_device(hass):
     assert sensor.device_info["name"] == entry.data["address"]
 
     coordinator.async_cancel_reminder_refresh()
+
+
+async def test_days_until_rolls_over_at_local_midnight(hass, freezer):
+    entry = MockConfigEntry(domain=DOMAIN, data=sample_entry_data())
+    entry.add_to_hass(hass)
+
+    with patch(CLIENT_PATH, return_value=FakeBinNightTonightClient(schedule=SAMPLE_SCHEDULE)):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        before = hass.states.get("sensor.bin_general").attributes["days_until"]
+
+        next_midnight = dt_util.start_of_local_day(dt_util.now().date() + timedelta(days=1))
+        freezer.move_to(next_midnight)
+        async_fire_time_changed(hass, next_midnight)
+        await hass.async_block_till_done()
+
+        after = hass.states.get("sensor.bin_general").attributes["days_until"]
+
+    assert after == before - 1
+    await hass.config_entries.async_unload(entry.entry_id)
