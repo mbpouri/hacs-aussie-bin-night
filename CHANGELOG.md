@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.3] - 2026-09-20
+
+### Fixed
+
+- **The card picker preview hung on a spinner and the card could not be added** (`Custom element not found: bin-night-card` in the browser console).
+
+### Added
+
+- A manually run **Release** workflow (`.github/workflows/release.yml`). It checks that `manifest.json` and `CHANGELOG.md` agree on the version and that CI passed, then tags the head of `main` and publishes the GitHub release with notes from this file.
+
 ## [1.0.2] - 2026-09-20
 
 ### Fixed
