@@ -3,10 +3,16 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
-from custom_components.aussie_bin_night.const import CONF_REMINDER_LEAD_TIME, DOMAIN
+from custom_components.aussie_bin_night.const import (
+    CONF_BIN_TYPES,
+    CONF_KNOWN_BIN_TYPES,
+    CONF_REMINDER_LEAD_TIME,
+    DOMAIN,
+)
 from custom_components.aussie_bin_night.coordinator import AussieBinNightCoordinator
 from custom_components.aussie_bin_night.sensor import BinCollectionSensor
 
@@ -43,7 +49,7 @@ async def test_general_waste_sensor_reports_next_collection(hass):
     # events[1] is the next event after events[0] that still includes "general"
     assert attributes["following_collection_date"] == SAMPLE_SCHEDULE.events[1].collection_date.isoformat()
 
-    coordinator.async_cancel_reminder_refresh()
+    coordinator.async_cancel_extra_refresh()
 
 
 async def test_reminder_time_uses_the_configured_lead_time(hass):
@@ -56,7 +62,7 @@ async def test_reminder_time_uses_the_configured_lead_time(hass):
 
     assert sensor.extra_state_attributes["reminder_time"] == expected.isoformat()
 
-    coordinator.async_cancel_reminder_refresh()
+    coordinator.async_cancel_extra_refresh()
 
 
 async def test_recycling_sensor_skips_an_event_missing_its_stream(hass):
@@ -74,7 +80,7 @@ async def test_recycling_sensor_skips_an_event_missing_its_stream(hass):
         == SAMPLE_SCHEDULE.events[2].collection_date.isoformat()
     )
 
-    coordinator.async_cancel_reminder_refresh()
+    coordinator.async_cancel_extra_refresh()
 
 
 async def test_garden_waste_sensor_finds_its_own_next_event(hass):
@@ -89,7 +95,7 @@ async def test_garden_waste_sensor_finds_its_own_next_event(hass):
     # only one garden event in the fixture, so there's no following collection
     assert "following_collection_date" not in sensor.extra_state_attributes
 
-    coordinator.async_cancel_reminder_refresh()
+    coordinator.async_cancel_extra_refresh()
 
 
 async def test_sensor_has_no_upcoming_date_when_the_stream_is_absent(hass):
@@ -108,7 +114,7 @@ async def test_sensor_has_no_upcoming_date_when_the_stream_is_absent(hass):
     assert attributes["council_id"] == SAMPLE_SCHEDULE.council_id
     assert attributes["bin_colour"] == "purple"
 
-    coordinator.async_cancel_reminder_refresh()
+    coordinator.async_cancel_extra_refresh()
 
 
 async def test_sensor_is_attached_to_a_household_device(hass):
@@ -121,7 +127,7 @@ async def test_sensor_is_attached_to_a_household_device(hass):
     assert sensor.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
     assert sensor.device_info["name"] == entry.data["address"]
 
-    coordinator.async_cancel_reminder_refresh()
+    coordinator.async_cancel_extra_refresh()
 
 
 async def test_days_until_rolls_over_at_local_midnight(hass, freezer):
@@ -167,11 +173,73 @@ async def test_a_stream_that_appears_later_gets_a_sensor(hass):
         await hass.async_block_till_done()
         assert hass.states.get("sensor.bin_hard") is None
 
-    with patch(CLIENT_PATH, return_value=FakeBinNightTonightClient(schedule=schedule("general", "hard"))):
-        await hass.data[DOMAIN][entry.entry_id].async_refresh()
-        await hass.async_block_till_done()
+    entry.runtime_data._client = FakeBinNightTonightClient(schedule=schedule("general", "hard"))
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
 
     state = hass.states.get("sensor.bin_hard")
     assert state is not None
     assert state.attributes["bin_colour"] == "orange"
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_deselecting_a_stream_removes_its_registry_entry(hass):
+    all_streams = ["general", "recycling", "garden"]
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=sample_entry_data(bin_types=all_streams, known_bin_types=all_streams),
+    )
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+
+    with patch(CLIENT_PATH, return_value=FakeBinNightTonightClient(schedule=SAMPLE_SCHEDULE)):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        assert registry.async_get("sensor.bin_recycling") is not None
+        assert registry.async_get("sensor.bin_garden") is not None
+
+        # Saving options reloads the entry through its update listener.
+        hass.config_entries.async_update_entry(
+            entry, options={CONF_BIN_TYPES: ["general"], CONF_KNOWN_BIN_TYPES: all_streams}
+        )
+        await hass.async_block_till_done()
+
+    assert registry.async_get("sensor.bin_general") is not None
+    assert hass.states.get("sensor.bin_general") is not None
+    assert registry.async_get("sensor.bin_recycling") is None
+    assert registry.async_get("sensor.bin_garden") is None
+    assert hass.states.get("sensor.bin_recycling") is None
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_two_households_get_separate_sensors(hass):
+    first = MockConfigEntry(domain=DOMAIN, unique_id="one", data=sample_entry_data())
+    second = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="two",
+        data=sample_entry_data(address="2 Other Street, Elsewhere VIC 3001", latitude=-37.9, longitude=145.0),
+    )
+    first.add_to_hass(hass)
+    second.add_to_hass(hass)
+
+    with patch(CLIENT_PATH, return_value=FakeBinNightTonightClient(schedule=SAMPLE_SCHEDULE)):
+        # Setting up the domain loads every entry for it, including the second.
+        assert await hass.config_entries.async_setup(first.entry_id)
+        await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    general_entries = [
+        registry_entry
+        for registry_entry in registry.entities.values()
+        if registry_entry.platform == DOMAIN and registry_entry.unique_id.endswith("_general")
+    ]
+    assert len(general_entries) == 2
+    assert {registry_entry.config_entry_id for registry_entry in general_entries} == {
+        first.entry_id,
+        second.entry_id,
+    }
+    # The first keeps the plain id and the second is suffixed by Home Assistant.
+    assert hass.states.get("sensor.bin_general") is not None
+    assert hass.states.get("sensor.bin_general_2") is not None
+    await hass.config_entries.async_unload(first.entry_id)
+    await hass.config_entries.async_unload(second.entry_id)

@@ -5,8 +5,14 @@ reference CONF_UPDATE_INTERVAL/CONF_REMINDER_LEAD_TIME without importing them,
 which raised a NameError the instant a user opened "Configure".
 """
 
-from custom_components.aussie_bin_night.const import CONF_BIN_TYPES, CONF_REMINDER_LEAD_TIME, CONF_UPDATE_INTERVAL, DOMAIN
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.aussie_bin_night.const import (
+    CONF_BIN_TYPES,
+    CONF_REMINDER_LEAD_TIME,
+    CONF_UPDATE_INTERVAL,
+    DOMAIN,
+)
 
 from .conftest import sample_entry_data
 

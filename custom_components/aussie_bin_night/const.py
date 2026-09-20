@@ -1,5 +1,7 @@
 """Constants for Aussie Bin Night."""
 
+from datetime import timedelta
+
 DOMAIN = "aussie_bin_night"
 
 CONF_ADDRESS = "address"
@@ -19,4 +21,7 @@ DEFAULT_UPDATE_INTERVAL_DAYS = 7
 DEFAULT_REMINDER_LEAD_TIME_HOURS = 12
 API_BASE_URL = "https://binnighttonight.com/api"
 REQUEST_TIMEOUT_SECONDS = 15
+USER_AGENT = "HomeAssistant-AussieBinNight (+https://github.com/mbpouri/hacs-aussie-bin-night)"
+# How long to wait before retrying after a failed refresh that left a usable schedule in place.
+STALE_RETRY_DELAY = timedelta(hours=1)
 STATIC_URL = f"/api/{DOMAIN}/static"

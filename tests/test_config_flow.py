@@ -15,12 +15,14 @@ from custom_components.aussie_bin_night.const import CONF_ADDRESS, CONF_BIN_TYPE
 from .conftest import SAMPLE_CANDIDATE, SAMPLE_SCHEDULE, FakeBinNightTonightClient, sample_entry_data
 
 CLIENT_PATH = "custom_components.aussie_bin_night.config_flow.BinNightTonightClient"
+SETUP_PATH = "custom_components.aussie_bin_night.async_setup_entry"
 UNIQUE_ID = f"{SAMPLE_CANDIDATE.latitude:.6f},{SAMPLE_CANDIDATE.longitude:.6f}"
 
 
 async def _run_happy_path(hass, *, context):
     fake_client = FakeBinNightTonightClient(candidates=[SAMPLE_CANDIDATE], schedule=SAMPLE_SCHEDULE)
-    with patch(CLIENT_PATH, return_value=fake_client):
+    # Finishing the flow sets up (or reloads) the entry, which would call the real provider.
+    with patch(CLIENT_PATH, return_value=fake_client), patch(SETUP_PATH, return_value=True):
         result = await hass.config_entries.flow.async_init(DOMAIN, context=context)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {"address": "1 example street"})
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {"address": "0"})
@@ -116,7 +118,10 @@ async def test_duplicate_address_aborts(hass):
 
 async def test_reconfigure_updates_the_existing_entry(hass):
     entry = MockConfigEntry(
-        domain=DOMAIN, unique_id="-38.000000,145.000000", data=sample_entry_data(address="Old Address")
+        domain=DOMAIN,
+        title="Old Address",
+        unique_id="-38.000000,145.000000",
+        data=sample_entry_data(address="Old Address"),
     )
     entry.add_to_hass(hass)
 
@@ -128,7 +133,9 @@ async def test_reconfigure_updates_the_existing_entry(hass):
     assert result["type"] == "abort"
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_ADDRESS] == SAMPLE_CANDIDATE.display_name
+    # Both identify the household, so they must move to the new address with the data.
     assert entry.unique_id == UNIQUE_ID
+    assert entry.title == SAMPLE_CANDIDATE.display_name
 
 
 async def test_reconfigure_step_defaults_to_current_address(hass):

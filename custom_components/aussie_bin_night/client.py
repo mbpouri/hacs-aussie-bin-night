@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from aiohttp import ClientError, ClientSession
+from aiohttp import ClientError, ClientSession, ContentTypeError
 
-from .const import API_BASE_URL, REQUEST_TIMEOUT_SECONDS
+from .const import API_BASE_URL, REQUEST_TIMEOUT_SECONDS, USER_AGENT
 
 
 class BinNightTonightError(Exception):
@@ -127,16 +127,26 @@ class BinNightTonightClient:
         """Fetch and validate one JSON-object API response."""
         try:
             async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
-                async with self._session.get(f"{API_BASE_URL}{path}", params=params) as response:
+                async with self._session.get(
+                    f"{API_BASE_URL}{path}", params=params, headers={"User-Agent": USER_AGENT}
+                ) as response:
                     if response.status == 429:
                         retry_after = response.headers.get("Retry-After", "a short wait")
                         raise BinNightTonightRateLimitedError(
                             f"Bin Night Tonight rate-limited this request; retry after {retry_after}"
                         )
+                    if 400 <= response.status < 500:
+                        raise BinNightTonightInvalidResponseError(
+                            f"Bin Night Tonight rejected the request with HTTP {response.status}"
+                        )
                     response.raise_for_status()
                     payload = await response.json()
+        except ContentTypeError as err:
+            raise BinNightTonightInvalidResponseError("API response is not JSON") from err
         except (ClientError, TimeoutError) as err:
             raise BinNightTonightConnectionError("Unable to reach Bin Night Tonight") from err
+        except ValueError as err:
+            raise BinNightTonightInvalidResponseError("API response is not valid JSON") from err
 
         if not isinstance(payload, dict):
             raise BinNightTonightInvalidResponseError("API response is not an object")
@@ -163,7 +173,8 @@ class BinNightTonightClient:
         postcode_context = context.get("postcode")
         locality_context = context.get("locality") or context.get("place")
         region_context = context.get("region")
-        if not all(isinstance(item, dict) for item in (address_context, postcode_context, locality_context, region_context)):
+        contexts = (address_context, postcode_context, locality_context, region_context)
+        if not all(isinstance(item, dict) for item in contexts):
             return None
 
         street = address_context.get("name")

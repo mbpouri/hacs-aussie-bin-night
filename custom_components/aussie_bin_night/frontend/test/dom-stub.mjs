@@ -16,6 +16,16 @@ export function installDomStub() {
   class FakeShadowRoot {
     constructor() {
       this.innerHTML = "";
+      this.listeners = {};
+    }
+
+    addEventListener(type, handler) {
+      (this.listeners[type] ||= []).push(handler);
+    }
+
+    // Test helper: deliver an event to the listeners the way the browser would.
+    dispatch(type, event) {
+      for (const handler of this.listeners[type] || []) handler(event);
     }
   }
 
@@ -23,6 +33,12 @@ export function installDomStub() {
     attachShadow() {
       this.shadowRoot = new FakeShadowRoot();
       return this.shadowRoot;
+    }
+
+    // Records events the element fires so tests can assert on them.
+    dispatchEvent(event) {
+      (this.firedEvents ||= []).push(event);
+      return true;
     }
   }
 

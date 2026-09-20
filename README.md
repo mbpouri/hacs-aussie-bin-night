@@ -14,13 +14,15 @@ Distributed via [HACS](https://hacs.xyz/) as a custom repository.
 - 🗓️ **Next collection sensor(s)** — one sensor per bin type (e.g. `sensor.bin_general`, `sensor.bin_recycling`, `sensor.bin_garden`)
 - 🔔 **Automation-friendly** — trigger notifications the night before collection day
 - 🖼️ **Lovelace card support** — optional companion card showing a friendly bin-icon countdown
-- 🔁 **Auto-refresh** — polls council data sources to stay in sync with schedule changes (public holidays, roadworks, etc.)
+- 🔁 **Stays current** — refreshes your schedule from Bin Night Tonight weekly, and once more shortly before each reminder, so a holiday-shifted collection is picked up before you are reminded
 
 ![The Bin Night card listing General waste in 3 days and Recycling in 10 days](custom_components/aussie_bin_night/brand/screenshot-card.png)
 
 ---
 
 ## 📦 Installation
+
+Requires Home Assistant **2024.11** or newer.
 
 ### Via HACS (recommended)
 
@@ -52,17 +54,21 @@ Configuration is done entirely through the UI (config flow) — no YAML required
 
 Moved house, or picked the wrong address? Go to **Settings → Devices & Services → Aussie Bin Night → ⋮ → Reconfigure** to search for a new address without removing and re-adding the integration.
 
+You can add the integration more than once, for example for a second property. Each address becomes its own device. The first household's sensors are named `sensor.bin_general`, `sensor.bin_recycling` and so on; a second household's get Home Assistant's numeric suffix (`sensor.bin_general_2`). The card lists every household's bins together, so set its `entities` list if you want just one.
+
 ### Options
 
 After setup, you can adjust via **Configure**:
 
 | Option             | Description                                                       | Default       |
 | ------------------ | ----------------------------------------------------------------- | ------------- |
-| Update interval    | How often to refresh schedule data                                | weekly        |
+| Update interval    | Days between schedule refreshes (1–30)                            | 7 (weekly)    |
 | Reminder lead time | Hours before the collection date that `reminder_time` should fall | 12            |
-| Bin types shown    | Which bin sensors to create                                       | All available |
+| Bin types shown    | Which bin sensors to create; deselecting one removes its sensor   | All available |
 
-The integration also schedules one extra refresh shortly before each `reminder_time`, so an automation firing on it sees up-to-date data even if a public holiday moved the collection since the last weekly poll.
+Beyond the regular refresh, the integration schedules extra ones at two points: shortly before each `reminder_time`, so an automation firing on it sees up-to-date data even if a public holiday moved the collection since the last poll; and the day after the last collection in the current schedule, so sensors don't sit on `unknown` waiting for the next poll.
+
+If a refresh fails because of a connection problem or rate limiting, the sensors keep showing the last known dates (those are still valid) and the integration tries again in an hour.
 
 ---
 
@@ -79,7 +85,7 @@ Each sensor exposes attributes:
 
 - `days_until` — number of days until next collection; recalculated at local midnight each day, without contacting the provider
 - `collection_date` — ISO date of next collection
-- `reminder_time` — timestamp, the configured reminder lead time before the start of `collection_date`; use it as a `time_date` automation trigger
+- `reminder_time` — timestamp, the configured reminder lead time before the start of `collection_date`; use it in a template trigger (see [Example Automation](#-example-automation))
 - `following_collection_date` — ISO date of the collection after this one, when the schedule includes it
 - `council` — detected council/LGA name, e.g. "Sample City Council"
 - `council_id` — the provider's raw LGA identifier, e.g. `sample-city-council`
@@ -88,7 +94,7 @@ Each sensor exposes attributes:
 
 One sensor is created for every bin stream Bin Night Tonight returns for your address, so you only see the ones your council actually collects. If a new stream appears later (for example an occasional hard-waste collection), its sensor is added automatically; streams you deselected in **Configure** stay off.
 
-Sensors only ever go `unavailable` when the last refresh actually failed (a connection problem, rate limiting, or an unexpected provider response). If the address itself has no more scheduled collections, the sensor instead reports `unknown` and a repair issue is raised under **Settings → Repairs** — see [Troubleshooting](#-troubleshooting).
+Sensors go `unavailable` only when the provider returns a response this integration doesn't understand. A temporary connection problem or rate limit does not make them unavailable: they keep the last known dates and the integration retries in an hour. If a stream has no upcoming collection, its sensor reports `unknown`; if the provider returns no collections at all for your address, a repair issue is raised under **Settings → Repairs** — see [Troubleshooting](#-troubleshooting).
 
 ![Attributes of sensor.bin_general in Developer Tools](<custom_components/aussie_bin_night/brand/screenshot-sensor-attributes.png>)
 
@@ -96,38 +102,42 @@ Sensors only ever go `unavailable` when the last refresh actually failed (a conn
 
 ## 🔔 Example Automation
 
-A simple day-based reminder:
+A simple evening reminder, sent at 6 pm when general waste is collected tomorrow:
 
 ```yaml
 automation:
   - alias: "Bin night reminder"
-    trigger:
-      - platform: numeric_state
-        entity_id: sensor.bin_general
-        attribute: days_until
-        below: 1
-    action:
-      - service: notify.mobile_app_your_phone
+    triggers:
+      - trigger: time
+        at: "18:00:00"
+    conditions:
+      - condition: template
+        value_template: "{{ state_attr('sensor.bin_general', 'days_until') == 1 }}"
+    actions:
+      - action: notify.mobile_app_your_phone
         data:
           title: "🗑️ Put the bins out!"
           message: "General waste collection is tomorrow morning."
 ```
 
-Or, to fire exactly at the configured reminder lead time instead of once a day out:
+Or, to fire exactly at the configured reminder lead time instead of at a fixed clock time:
 
 ```yaml
 automation:
   - alias: "Bin night reminder (precise)"
-    trigger:
-      - platform: template
+    triggers:
+      - trigger: template
         value_template: >
-          {{ now() >= (state_attr('sensor.bin_general', 'reminder_time') | as_datetime) }}
-    action:
-      - service: notify.mobile_app_your_phone
+          {% set reminder = state_attr('sensor.bin_general', 'reminder_time') %}
+          {{ reminder is not none and now() >= (reminder | as_datetime) }}
+    actions:
+      - action: notify.mobile_app_your_phone
         data:
           title: "🗑️ Put the bins out!"
           message: "General waste collection is coming up."
 ```
+
+A day-count trigger such as `numeric_state` on `days_until` fires at **midnight**, when the count changes, so a "night before" reminder is better done with one of the two forms above.
 
 ---
 
@@ -160,7 +170,7 @@ The visual editor lets you pick specific sensors, and shows the result as you ch
 
 ![The Bin Night card's visual editor](<custom_components/aussie_bin_night/brand/screenshot-card-editor.png>)
 
-The card shows one row per bin with its next collection, soonest first: a shaded bin icon with a lid in the stream's colour, the stream name (for example "General waste"), the date (for example "Tuesday 22 September"), and a countdown ("Today", or a number with "days away"). A sensor with no data is listed at the end as "Unavailable".
+The card shows one row per bin with its next collection, soonest first: a shaded bin icon with a lid in the stream's colour, the stream name (for example "General waste"), the date (for example "Tuesday 22 September"), and a countdown ("Today", or a number with "days away"). Tap a row (or focus it and press Enter or Space) to open that sensor's details. A stream with no upcoming collection is listed at the end as "No upcoming collection", and a sensor that is unavailable or missing as "Unavailable".
 
 ---
 
@@ -177,7 +187,7 @@ are stored locally in Home Assistant's config entry so the integration can refre
 the collection schedule. Raw address-search responses are not stored. The selected
 address details are sent to Bin Night Tonight only when looking up or refreshing
 the household schedule. The integration never asks for or stores an API key or
-other credential. Home Assistant's diagnostics download for this integration
+other credential, and does not write your address into its own log messages. Home Assistant's diagnostics download for this integration
 (**Settings → Devices & Services → Aussie Bin Night → Download diagnostics**)
 redacts the address, coordinates, and postcode; it keeps the council/LGA id and
 collection schedule, since those are shared by every household in that
@@ -190,8 +200,9 @@ collection zone rather than identifying yours specifically.
 - **My address isn't found** — the address search relies on your council's published address list or geocoding; try entering just the street name and suburb
 - **I picked the wrong address, or moved house** — use **Settings → Devices & Services → Aussie Bin Night → ⋮ → Reconfigure** to search again; this keeps your automations and options intact
 - **Dates look wrong** — some councils shift collections around public holidays; check [Council coverage](https://binnighttonight.com/coverage) to see if that council's data source accounts for this
-- **Sensor shows "unavailable"** — the last refresh failed (connection issue, or the provider is rate-limiting requests); it clears on its own once refreshes succeed again. Check **Settings → Devices & Services → Aussie Bin Night → ⋮ → Reload** and the Home Assistant logs for this integration if it persists
-- **Sensor shows "unknown" with no collection date** — the provider returned a valid but empty schedule for this address, which usually means it's dropped coverage; check **Settings → Repairs** for an actionable notice, and try **Reconfigure** to confirm the address
+- **Sensors keep showing the same dates after a connection problem** — that is intended: a failed refresh (connection issue, or the provider rate-limiting requests) leaves the last known schedule in place and retries in an hour. Download the diagnostics to see when the last successful refresh was and whether the schedule is currently stale
+- **Sensor shows "unavailable"** — the provider returned a response this integration doesn't understand (see the repair issue below). If setup itself can't reach the provider, Home Assistant retries it automatically and shows the integration as "retrying setup"; check **Settings → Devices & Services → Aussie Bin Night → ⋮ → Reload** and the Home Assistant logs for this integration if it persists
+- **Sensor shows "unknown" with no collection date** — this stream has no upcoming collection in the schedule. If every sensor is `unknown`, the provider returned a valid but empty schedule for this address, which usually means it's dropped coverage; check **Settings → Repairs** for an actionable notice, and try **Reconfigure** to confirm the address
 - **"Unexpected response" repair issue** — the provider's API returned data this integration doesn't recognise, which usually means its API changed; please [open an issue](https://github.com/mbpouri/hacs-aussie-bin-night/issues) with the details
 
 ---

@@ -178,3 +178,102 @@ test("gives each row one accessible summary, with attribute-breaking characters 
   const html = card.shadowRoot.innerHTML;
   assert.ok(html.includes('aria-label="A&quot;b&lt;c&gt;, Friday 25 September, 3 days away"'), html);
 });
+
+test("shows a distinct message for a stream with no upcoming date versus an unavailable one", () => {
+  const card = createCard({ entities: ["sensor.bin_hard", "sensor.bin_general"] });
+  card.hass = {
+    states: {
+      "sensor.bin_hard": { state: "unknown", attributes: { bin_type: "hard" } },
+      "sensor.bin_general": { state: "unavailable", attributes: { bin_type: "general" } },
+    },
+  };
+  const html = card.shadowRoot.innerHTML;
+  assert.match(html, /Hard waste<\/div><div class="empty">No upcoming collection</);
+  assert.match(html, /General waste<\/div><div class="empty">Unavailable</);
+  assert.ok(html.includes('aria-label="Hard waste, no upcoming collection"'), html);
+});
+
+test("does not rebuild the DOM when an unrelated entity changes", () => {
+  const card = createCard({});
+  const states = { "sensor.bin_general": sensor("general", "2026-09-22", 3), "light.kitchen": { state: "on", attributes: {} } };
+  card.hass = { states };
+  let writes = 0;
+  const root = card.shadowRoot;
+  let html = root.innerHTML;
+  Object.defineProperty(root, "innerHTML", { get: () => html, set: (value) => { writes++; html = value; } });
+
+  card.hass = { states: { ...states, "light.kitchen": { state: "off", attributes: {} } } };
+  assert.equal(writes, 0, "an unrelated light changing should not re-render");
+
+  card.hass = { states: { ...states, "sensor.bin_general": sensor("general", "2026-09-22", 2) } };
+  assert.equal(writes, 1, "the days_until rollover should re-render");
+  assert.match(html, /<div class="num">2<\/div>/);
+
+  card.setConfig({ entities: ["sensor.bin_general"] });
+  assert.equal(writes, 2, "a new config should always re-render");
+});
+
+test("defines the bin gradients once per card, not once per row", () => {
+  const card = createCard({});
+  card.hass = {
+    states: {
+      "sensor.bin_general": sensor("general", "2026-09-22", 3),
+      "sensor.bin_recycling": sensor("recycling", "2026-09-23", 4),
+      "sensor.bin_garden": sensor("garden", "2026-09-24", 5),
+    },
+  };
+  const html = card.shadowRoot.innerHTML;
+  assert.equal((html.match(/id="bnBody"/g) || []).length, 1);
+  assert.equal((html.match(/id="bnLid"/g) || []).length, 1);
+  assert.equal((html.match(/url\(#bnBody\)/g) || []).length, 3);
+});
+
+test("real rows are keyboard-focusable buttons that open more-info", () => {
+  const card = createCard({});
+  card.hass = { states: { "sensor.bin_general": sensor("general", "2026-09-22", 3) } };
+  const html = card.shadowRoot.innerHTML;
+  assert.match(html, /role="button" tabindex="0" data-entity="sensor.bin_general"/);
+
+  const target = { closest: () => ({ dataset: { entity: "sensor.bin_general" } }) };
+  let prevented = 0;
+  const event = (extra) => ({ target, preventDefault: () => prevented++, ...extra });
+
+  card.shadowRoot.dispatch("click", event());
+  card.shadowRoot.dispatch("keydown", event({ key: "Enter" }));
+  card.shadowRoot.dispatch("keydown", event({ key: " " }));
+  card.shadowRoot.dispatch("keydown", event({ key: "a" }));
+
+  assert.equal(card.firedEvents.length, 3, "click, Enter and Space open more-info; other keys do not");
+  assert.equal(prevented, 3);
+  for (const fired of card.firedEvents) {
+    assert.equal(fired.type, "hass-more-info");
+    assert.equal(fired.detail.entityId, "sensor.bin_general");
+    assert.equal(fired.bubbles, true);
+    assert.equal(fired.composed, true);
+  }
+});
+
+test("ignores activation that did not land on a row", () => {
+  const card = createCard({});
+  card.hass = { states: { "sensor.bin_general": sensor("general", "2026-09-22", 3) } };
+  card.shadowRoot.dispatch("click", { target: { closest: () => null }, preventDefault() {} });
+  assert.equal(card.firedEvents, undefined);
+});
+
+test("sample rows and missing entities are not buttons", () => {
+  const sample = createCard({});
+  sample.hass = { states: {} };
+  assert.doesNotMatch(sample.shadowRoot.innerHTML, /role="button"/);
+
+  const missing = createCard({ entities: ["sensor.bin_missing"] });
+  missing.hass = { states: {} };
+  assert.doesNotMatch(missing.shadowRoot.innerHTML, /role="button"/);
+  assert.match(missing.shadowRoot.innerHTML, /sensor\.bin_missing/);
+});
+
+test("offers sizing hints for sections dashboards", () => {
+  const card = createCard({});
+  const options = card.getGridOptions();
+  assert.equal(options.columns, 12);
+  assert.ok(options.min_columns <= options.columns);
+});

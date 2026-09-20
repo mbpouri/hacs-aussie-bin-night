@@ -1,7 +1,9 @@
 """Tests for the Bin Night Tonight client, using sanitized recorded-shape fixtures."""
 
+from unittest.mock import MagicMock
+
 import pytest
-from aiohttp import ClientError
+from aiohttp import ClientError, ContentTypeError
 
 from custom_components.aussie_bin_night.client import (
     AddressCandidate,
@@ -16,13 +18,16 @@ from custom_components.aussie_bin_night.client import (
 class _FakeResponse:
     """A minimal stand-in for aiohttp's async response context manager."""
 
-    def __init__(self, status=200, payload=None, headers=None, raise_on_enter=None):
+    def __init__(self, status=200, payload=None, headers=None, raise_on_enter=None, json_exc=None):
         self.status = status
         self._payload = payload
         self.headers = headers or {}
         self._raise_on_enter = raise_on_enter
+        self._json_exc = json_exc
 
     async def json(self):
+        if self._json_exc is not None:
+            raise self._json_exc
         return self._payload
 
     def raise_for_status(self):
@@ -45,8 +50,9 @@ class _FakeSession:
         self._response = response
         self.requested = None
 
-    def get(self, url, params=None):
+    def get(self, url, params=None, headers=None):
         self.requested = (url, params)
+        self.headers = headers
         return self._response
 
 
@@ -150,6 +156,38 @@ async def test_network_failure_raises_connection_error():
 
 async def test_non_object_response_is_invalid():
     session = _FakeSession(_FakeResponse(payload=["not", "an", "object"]))
+    client = BinNightTonightClient(session)
+
+    with pytest.raises(BinNightTonightInvalidResponseError):
+        await client.async_search_addresses("anything")
+
+
+async def test_requests_identify_the_integration_with_a_user_agent(load_fixture):
+    session = _FakeSession(_FakeResponse(payload=load_fixture("geocode_response.json")))
+
+    await BinNightTonightClient(session).async_search_addresses("anything")
+
+    assert "AussieBinNight" in session.headers["User-Agent"]
+
+
+async def test_unexpected_client_error_status_is_an_invalid_response_not_a_connection_error():
+    session = _FakeSession(_FakeResponse(status=404))
+    client = BinNightTonightClient(session)
+
+    with pytest.raises(BinNightTonightInvalidResponseError):
+        await client.async_get_schedule(_address())
+
+
+async def test_a_non_json_content_type_is_an_invalid_response():
+    session = _FakeSession(_FakeResponse(json_exc=ContentTypeError(MagicMock(), ())))
+    client = BinNightTonightClient(session)
+
+    with pytest.raises(BinNightTonightInvalidResponseError):
+        await client.async_search_addresses("anything")
+
+
+async def test_a_malformed_json_body_is_an_invalid_response():
+    session = _FakeSession(_FakeResponse(json_exc=ValueError("Expecting value")))
     client = BinNightTonightClient(session)
 
     with pytest.raises(BinNightTonightInvalidResponseError):

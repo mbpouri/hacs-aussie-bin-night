@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_point_in_time
@@ -29,7 +29,9 @@ from .const import (
     DEFAULT_REMINDER_LEAD_TIME_HOURS,
     DEFAULT_UPDATE_INTERVAL_DAYS,
     DOMAIN,
+    STALE_RETRY_DELAY,
 )
+
 
 def enabled_bin_types(entry: ConfigEntry, available: tuple[str, ...]) -> list[str]:
     """Return the bin streams that should have a sensor.
@@ -57,7 +59,10 @@ class AussieBinNightCoordinator(DataUpdateCoordinator[CollectionSchedule]):
         super().__init__(
             hass,
             logger=logging.getLogger(__name__),
-            name=f"{DOMAIN} {entry.title}",
+            # The entry id, not its title: the title is the household's street address
+            # and Home Assistant writes the coordinator name into its log messages.
+            name=f"{DOMAIN} {entry.entry_id}",
+            config_entry=entry,
             update_interval=timedelta(
                 days=int(entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_DAYS))
             ),
@@ -65,22 +70,32 @@ class AussieBinNightCoordinator(DataUpdateCoordinator[CollectionSchedule]):
         self._client = BinNightTonightClient(async_get_clientsession(hass))
         self._address = address_from_config(dict(entry.data))
         self._entry = entry
-        self._unsub_reminder_refresh: CALLBACK_TYPE | None = None
+        self._unsub_extra_refresh: CALLBACK_TYPE | None = None
+        self.last_successful_update: datetime | None = None
+        self.serving_stale = False
 
     async def _async_update_data(self) -> CollectionSchedule:
         """Fetch the current schedule, raising actionable repairs for persistent problems."""
         try:
             schedule = await self._client.async_get_schedule(self._address)
-        except BinNightTonightRateLimitedError as err:
-            # Rate limits are transient and resolve on their own once traffic eases,
-            # so entities go unavailable without a repair issue cluttering the list.
-            raise UpdateFailed(str(err)) from err
-        except BinNightTonightConnectionError as err:
-            raise UpdateFailed(str(err)) from err
+        except (BinNightTonightRateLimitedError, BinNightTonightConnectionError) as err:
+            # Both are transient and resolve on their own. A previously fetched schedule's
+            # dates stay valid, so keep serving it and retry soon instead of leaving every
+            # sensor unavailable until the next (weekly) poll. Only the very first fetch,
+            # which has nothing to fall back on, fails outright.
+            if self.data is None:
+                raise UpdateFailed(str(err)) from err
+            log = self.logger.debug if self.serving_stale else self.logger.warning
+            log("Could not refresh the bin schedule (%s); keeping the last known schedule and retrying", err)
+            self.serving_stale = True
+            self._async_schedule_extra_refresh(dt_util.utcnow() + STALE_RETRY_DELAY)
+            return self.data
         except BinNightTonightInvalidResponseError as err:
             self._async_raise_issue(ISSUE_INVALID_RESPONSE, ir.IssueSeverity.ERROR)
             raise UpdateFailed(str(err)) from err
 
+        self.serving_stale = False
+        self.last_successful_update = dt_util.utcnow()
         if schedule.available_bin_types:
             self._async_clear_issue(ISSUE_INVALID_RESPONSE)
             self._async_clear_issue(ISSUE_UNSUPPORTED_ADDRESS)
@@ -88,48 +103,59 @@ class AussieBinNightCoordinator(DataUpdateCoordinator[CollectionSchedule]):
             # A well-formed response with no collection events at all almost always
             # means the provider has stopped covering this address.
             self._async_raise_issue(ISSUE_UNSUPPORTED_ADDRESS, ir.IssueSeverity.WARNING)
-        self._async_schedule_reminder_refresh(schedule)
+        self._async_schedule_next_extra_refresh(schedule)
         return schedule
 
-    def _async_schedule_reminder_refresh(self, schedule: CollectionSchedule) -> None:
-        """Schedule one extra refresh shortly before the next reminder is due.
+    def _async_schedule_next_extra_refresh(self, schedule: CollectionSchedule) -> None:
+        """Schedule one extra refresh ahead of when the current data could go stale.
 
-        The weekly cadence alone could leave stale data in place right when an
-        automation is about to act on it, for example if a public holiday moved
-        a collection after the last poll. This tops up the data just ahead of
-        the configured reminder window instead of waiting for the next poll.
+        The weekly cadence alone could leave stale data in place at the moments it
+        matters most, so this picks the earlier of two points:
+
+        - shortly before the next reminder is due, so an automation acting on it
+          sees fresh data even if a public holiday moved a collection since the
+          last poll;
+        - the day after the last known collection, when every stream would
+          otherwise sit on `unknown` until the next poll.
         """
-        if self._unsub_reminder_refresh is not None:
-            self._unsub_reminder_refresh()
-            self._unsub_reminder_refresh = None
+        self.async_cancel_extra_refresh()
 
         lead_hours = int(self._entry.options.get(CONF_REMINDER_LEAD_TIME, DEFAULT_REMINDER_LEAD_TIME_HOURS))
         now = dt_util.utcnow()
+        candidates: list[datetime] = []
+
         reminder_times = (
             dt_util.start_of_local_day(event.collection_date) - timedelta(hours=lead_hours)
             for event in schedule.events
         )
-        upcoming_reminder = min((reminder for reminder in reminder_times if reminder > now), default=None)
-        if upcoming_reminder is None:
-            return
+        if (upcoming_reminder := min((r for r in reminder_times if r > now), default=None)) is not None:
+            candidates.append(upcoming_reminder - timedelta(minutes=5))
 
-        refresh_at = upcoming_reminder - timedelta(minutes=5)
-        if refresh_at <= now:
-            return
-        self._unsub_reminder_refresh = async_track_point_in_time(
-            self.hass, self._async_handle_reminder_refresh, refresh_at
+        if schedule.events:
+            last_event = max(event.collection_date for event in schedule.events)
+            candidates.append(dt_util.start_of_local_day(last_event + timedelta(days=1)))
+
+        if (refresh_at := min((c for c in candidates if c > now), default=None)) is not None:
+            self._async_schedule_extra_refresh(refresh_at)
+
+    @callback
+    def _async_schedule_extra_refresh(self, refresh_at: datetime) -> None:
+        """Replace any pending extra refresh with one at the given time."""
+        self.async_cancel_extra_refresh()
+        self._unsub_extra_refresh = async_track_point_in_time(
+            self.hass, self._async_handle_extra_refresh, refresh_at
         )
 
-    async def _async_handle_reminder_refresh(self, _now) -> None:
-        """Refresh the schedule just before a reminder is due."""
-        self._unsub_reminder_refresh = None
+    async def _async_handle_extra_refresh(self, _now: datetime) -> None:
+        """Refresh the schedule at an extra point chosen by this coordinator."""
+        self._unsub_extra_refresh = None
         await self.async_request_refresh()
 
-    def async_cancel_reminder_refresh(self) -> None:
-        """Cancel any pending pre-reminder refresh, for use as an unload callback."""
-        if self._unsub_reminder_refresh is not None:
-            self._unsub_reminder_refresh()
-            self._unsub_reminder_refresh = None
+    def async_cancel_extra_refresh(self) -> None:
+        """Cancel any pending extra refresh, for use as an unload callback."""
+        if self._unsub_extra_refresh is not None:
+            self._unsub_extra_refresh()
+            self._unsub_extra_refresh = None
 
     def _async_raise_issue(self, issue_key: str, severity: ir.IssueSeverity) -> None:
         """Create or refresh a repair issue naming this household's config entry."""
@@ -146,3 +172,6 @@ class AussieBinNightCoordinator(DataUpdateCoordinator[CollectionSchedule]):
     def _async_clear_issue(self, issue_key: str) -> None:
         """Remove a previously raised repair issue once a fetch recovers."""
         ir.async_delete_issue(self.hass, DOMAIN, f"{issue_key}_{self._entry.entry_id}")
+
+
+type AussieBinNightConfigEntry = ConfigEntry[AussieBinNightCoordinator]

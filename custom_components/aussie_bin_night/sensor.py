@@ -14,7 +14,8 @@ the Bin Night Tonight API itself; keep the two in sync if this contract changes)
 - `days_until` (int): present only alongside a non-`unknown` state.
 - `reminder_time` (str, ISO datetime, local timezone): present only alongside a
   non-`unknown` state; the configured reminder lead time before the start of
-  `collection_date`.
+  `collection_date`. It is an attribute, so use it from a template trigger; the
+  `time` trigger only accepts entities, not attributes.
 - `following_collection_date` (str, ISO date, optional): the collection after
   the current one, when the schedule includes it.
 - `council` (str): readable council name, e.g. "Sample City Council"; always present.
@@ -29,22 +30,22 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ATTRIBUTION
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.util import dt as dt_util
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
-from .coordinator import AussieBinNightCoordinator, enabled_bin_types
 from .const import (
     CONF_ADDRESS,
     CONF_REMINDER_LEAD_TIME,
     DEFAULT_REMINDER_LEAD_TIME_HOURS,
     DOMAIN,
 )
+from .coordinator import AussieBinNightConfigEntry, AussieBinNightCoordinator, enabled_bin_types
 
 ATTR_COLLECTION_DATE = "collection_date"
 ATTR_COUNCIL = "council"
@@ -67,11 +68,12 @@ BIN_COLOURS = {
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: AussieBinNightConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Add collection-date sensors for the configured bin streams."""
-    coordinator: AussieBinNightCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
+    _async_remove_deselected_sensors(hass, entry, coordinator)
     added: set[str] = set()
 
     @callback
@@ -88,6 +90,24 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(_async_add_new_sensors))
 
 
+@callback
+def _async_remove_deselected_sensors(
+    hass: HomeAssistant, entry: AussieBinNightConfigEntry, coordinator: AussieBinNightCoordinator
+) -> None:
+    """Drop registry entries for streams the user has switched off in the options.
+
+    Reloading only stops providing a deselected sensor; without this its registry
+    entry would linger as a permanently unavailable "no longer provided" entity.
+    """
+    wanted = {
+        f"{entry.entry_id}_{bin_type}" for bin_type in enabled_bin_types(entry, coordinator.data.available_bin_types)
+    }
+    registry = er.async_get(hass)
+    for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if registry_entry.domain == "sensor" and registry_entry.unique_id not in wanted:
+            registry.async_remove(registry_entry.entity_id)
+
+
 class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEntity):
     """Represent the next collection date for one bin stream."""
 
@@ -98,7 +118,7 @@ class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEn
     def __init__(
         self,
         coordinator: AussieBinNightCoordinator,
-        entry: ConfigEntry,
+        entry: AussieBinNightConfigEntry,
         bin_type: str,
     ) -> None:
         """Initialize a bin collection sensor."""

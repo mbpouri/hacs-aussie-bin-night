@@ -4,7 +4,8 @@
 // `collection_date` (ISO date) and `days_until` (int), present only when the state
 // isn't "unknown", plus `bin_type`, `bin_colour` and `attribution`. With no
 // `entities` configured the card discovers this integration's sensors itself. It
-// shows one row per bin with its next collection, soonest first.
+// shows one row per bin with its next collection, soonest first. Each real row is
+// a keyboard-focusable button that opens the sensor's more-info dialog.
 const DOMAIN = "aussie_bin_night";
 const ATTRIBUTION = "Data provided by Bin Night Tonight";
 
@@ -28,27 +29,69 @@ class BinNightCard extends HTMLElement {
 
   static getStubConfig() { return {}; }
 
+  // Sizing hint for sections dashboards; masonry dashboards use getCardSize().
+  getGridOptions() { return { columns: 12, min_columns: 6, rows: "auto" }; }
+
   setConfig(config) {
     if (config.entities !== undefined && !Array.isArray(config.entities)) throw new Error("`entities` must be a list of Aussie Bin Night sensor entities.");
     this.config = config;
+    this._lastSignature = null;
     this._render();
   }
 
   set hass(hass) { this._hass = hass; this._render(); }
 
-  connectedCallback() { if (!this.shadowRoot) this.attachShadow({ mode: "open" }); this._render(); }
+  connectedCallback() {
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: "open" });
+      this.shadowRoot.addEventListener("click", (event) => this._onActivate(event));
+      this.shadowRoot.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") this._onActivate(event);
+      });
+    }
+    this._render();
+  }
+
+  // Rows are rebuilt from scratch, so one delegated listener handles them all.
+  _onActivate(event) {
+    const row = event.target?.closest?.("[data-entity]");
+    if (!row) return;
+    event.preventDefault?.();
+    this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId: row.dataset.entity } }));
+  }
 
   getCardSize() { return Math.max(2, this._rowCount || 3); }
 
+  // `hass` is replaced on every state change anywhere in Home Assistant, so skip
+  // rebuilding the DOM unless something this card actually shows has changed.
+  _signature(ids) {
+    const states = this._hass.states;
+    const parts = ids.map((id) => {
+      const state = states[id];
+      if (!state) return id;
+      const a = state.attributes;
+      return [id, state.state, a.collection_date, a.days_until, a.bin_type, a.bin_colour].join("|");
+    });
+    // Sample rows are dated relative to today, so they must refresh daily.
+    return [this._hass.locale?.language, ids.length ? "" : new Date().toDateString(), ...parts].join("\n");
+  }
+
   _render() {
     if (!this.shadowRoot || !this.config || !this._hass) return;
-    const rows = this._rows();
+    const ids = this._entityIds();
+    const signature = this._signature(ids);
+    if (signature === this._lastSignature) return;
+    this._lastSignature = signature;
+    const rows = this._rows(ids);
     this._rowCount = rows.length;
     this.shadowRoot.innerHTML = `<style>
       :host { display:block; } ha-card { background:var(--ha-card-background,var(--card-background-color)); border-radius:var(--ha-card-border-radius,12px); box-shadow:var(--ha-card-box-shadow,none); color:var(--primary-text-color); overflow:hidden; }
       ul { list-style:none; margin:0; padding:4px 0; }
+      li + li { border-top:1px solid var(--divider-color); }
       .row { align-items:center; display:grid; gap:14px; grid-template-columns:36px 1fr auto; padding:12px 16px; }
-      .row + .row { border-top:1px solid var(--divider-color); }
+      .row[role=button] { cursor:pointer; }
+      .row[role=button]:focus-visible { outline:2px solid var(--primary-color); outline-offset:-2px; }
+      .defs { height:0; position:absolute; width:0; }
       .icon svg { display:block; filter:drop-shadow(0 1px 1px rgba(0,0,0,.25)); height:52px; margin:0 auto; width:34px; }
       .info { min-width:0; }
       .name { font-size:1.05em; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -58,11 +101,10 @@ class BinNightCard extends HTMLElement {
       .num { font-size:1.3em; font-weight:700; line-height:1.2; }
       .num.today { color:var(--success-color,#2e7d32); }
       .unit { color:var(--secondary-text-color); font-size:.8em; }
-    </style><ha-card><ul aria-label="Upcoming bin collections">${rows.join("")}</ul></ha-card>`;
+    </style><ha-card>${this._defs()}<ul aria-label="Upcoming bin collections">${rows.join("")}</ul></ha-card>`;
   }
 
-  _rows() {
-    const ids = this._entityIds();
+  _rows(ids) {
     const entries = [];
     const unavailable = [];
     for (const id of ids) {
@@ -74,7 +116,7 @@ class BinNightCard extends HTMLElement {
       entries.push({ id, date, days: Number.isFinite(days) ? days : null, a });
     }
     entries.sort((x, y) => x.date.localeCompare(y.date) || this._label(x.id, x.a).localeCompare(this._label(y.id, y.a)));
-    if (!entries.length && !unavailable.length) return [...this._sampleEntries().map((e) => this._row(e)), `<li class="row" aria-label="Sample data. No Aussie Bin Night sensors found."><div></div><div class="info"><div class="empty">Sample data. Set up the Aussie Bin Night integration to see your own collections.</div></div><div></div></li>`];
+    if (!entries.length && !unavailable.length) return [...this._sampleEntries().map((e) => this._row({ ...e, sample: true })), `<li class="item" aria-label="Sample data. No Aussie Bin Night sensors found."><div class="row"><div></div><div class="info"><div class="empty">Sample data. Set up the Aussie Bin Night integration to see your own collections.</div></div><div></div></div></li>`];
     return [...entries.map((e) => this._row(e)), ...unavailable.map((id) => this._unavailableRow(id))];
   }
 
@@ -91,20 +133,32 @@ class BinNightCard extends HTMLElement {
     return Object.keys(states).filter((id) => id.startsWith("sensor.") && (this._hass.entities?.[id]?.platform === DOMAIN || states[id].attributes.attribution === ATTRIBUTION));
   }
 
-  _row({ id, date, days, a }) {
+  _row({ id, date, days, a, sample = false }) {
     const name = this._label(id, a);
     const when = this._formatDate(date);
     const today = days === 0;
     const num = today ? "Today" : days === null ? "" : String(days);
     const unit = days === null ? "" : `${days === 1 ? "day" : "days"} away`;
     const summary = `${name}, ${when}${days === null ? "" : today ? ", today" : `, ${days} ${unit}`}`;
-    return `<li class="row" aria-label="${this._escapeAttr(summary)}"><div class="icon" aria-hidden="true">${this._bin(LID_COLOURS[a.bin_colour])}</div><div class="info"><div class="name">${this._escape(name)}</div><div class="date">${this._escape(when)}</div></div><div class="count"><div class="num${today ? " today" : ""}">${this._escape(num)}</div><div class="unit">${this._escape(today ? "0 days away" : unit)}</div></div></li>`;
+    const body = `<div class="icon" aria-hidden="true">${this._bin(LID_COLOURS[a.bin_colour])}</div><div class="info"><div class="name">${this._escape(name)}</div><div class="date">${this._escape(when)}</div></div><div class="count"><div class="num${today ? " today" : ""}">${this._escape(num)}</div><div class="unit">${this._escape(today ? "0 days away" : unit)}</div></div>`;
+    return this._item(body, summary, sample ? null : id);
+  }
+
+  // A real entity's row is a button that opens its more-info dialog; sample rows
+  // and missing entities have nothing to open, so they stay plain list items.
+  _item(body, summary, entityId) {
+    if (!entityId) return `<li class="item" aria-label="${this._escapeAttr(summary)}"><div class="row">${body}</div></li>`;
+    return `<li class="item"><div class="row" role="button" tabindex="0" data-entity="${this._escapeAttr(entityId)}" aria-label="${this._escapeAttr(summary)}">${body}</div></li>`;
   }
 
   _unavailableRow(id) {
     const state = this._hass.states[id];
     const name = state ? this._label(id, state.attributes) : id;
-    return `<li class="row" aria-label="${this._escapeAttr(`${name}, unavailable`)}"><div class="icon" aria-hidden="true">${this._bin()}</div><div class="info"><div class="name">${this._escape(name)}</div><div class="empty">Unavailable</div></div><div></div></li>`;
+    // "unknown" means the schedule is fine but this stream has no upcoming date;
+    // anything else (unavailable or a missing entity) means we can't tell.
+    const message = state?.state === "unknown" ? "No upcoming collection" : "Unavailable";
+    const body = `<div class="icon" aria-hidden="true">${this._bin()}</div><div class="info"><div class="name">${this._escape(name)}</div><div class="empty">${message}</div></div><div></div>`;
+    return this._item(body, `${name}, ${message.toLowerCase()}`, state ? id : null);
   }
 
   _label(id, a) {
@@ -120,10 +174,14 @@ class BinNightCard extends HTMLElement {
     return `${get("weekday")} ${get("day")} ${get("month")}`;
   }
 
+  // Referenced by every row's bin icon; ids are per shadow root, so define them once here.
+  _defs() {
+    return `<svg class="defs" aria-hidden="true" focusable="false"><defs><linearGradient id="bnBody" x1="0" x2="1"><stop offset="0" stop-color="#5a6472"/><stop offset=".45" stop-color="#3b4451"/><stop offset="1" stop-color="#242b35"/></linearGradient>`
+      + `<linearGradient id="bnLid" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset=".5" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".28"/></linearGradient></defs></svg>`;
+  }
+
   _bin(lid = "var(--disabled-text-color,#9e9e9e)") {
     return `<svg viewBox="0 0 32 50" focusable="false">`
-      + `<defs><linearGradient id="bnBody" x1="0" x2="1"><stop offset="0" stop-color="#5a6472"/><stop offset=".45" stop-color="#3b4451"/><stop offset="1" stop-color="#242b35"/></linearGradient>`
-      + `<linearGradient id="bnLid" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset=".5" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".28"/></linearGradient></defs>`
       + `<ellipse cx="16" cy="48" rx="12" ry="1.5" fill="rgba(0,0,0,.22)"/>`
       + `<path d="M6.5 13H25.5L23.8 43a2 2 0 0 1-2 1.9H10.2a2 2 0 0 1-2-1.9Z" fill="url(#bnBody)"/>`
       + `<path d="M7 14h3.2l1 28.6h-.9a1.4 1.4 0 0 1-1.4-1.3Z" fill="#fff" opacity=".1"/>`

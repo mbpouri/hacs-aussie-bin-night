@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers import selector
@@ -19,7 +18,6 @@ from .client import (
     BinNightTonightRateLimitedError,
     CollectionSchedule,
 )
-from .coordinator import enabled_bin_types
 from .const import (
     CONF_ADDRESS,
     CONF_BIN_TYPES,
@@ -33,8 +31,11 @@ from .const import (
     CONF_STREET,
     CONF_SUBURB,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_REMINDER_LEAD_TIME_HOURS,
+    DEFAULT_UPDATE_INTERVAL_DAYS,
     DOMAIN,
 )
+from .coordinator import AussieBinNightConfigEntry, enabled_bin_types
 
 
 class AussieBinNightConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -137,7 +138,10 @@ class AussieBinNightConfigFlow(ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(CONF_ADDRESS): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=[selector.SelectOptionDict(value=str(index), label=candidate.display_name) for index, candidate in enumerate(self._candidates)],
+                            options=[
+                                selector.SelectOptionDict(value=str(index), label=candidate.display_name)
+                                for index, candidate in enumerate(self._candidates)
+                            ],
                             mode=selector.SelectSelectorMode.LIST,
                         )
                     )
@@ -179,14 +183,21 @@ class AussieBinNightConfigFlow(ConfigFlow, domain=DOMAIN):
                 for other_entry in self._async_current_entries():
                     if other_entry.entry_id != reconfigure_entry.entry_id and other_entry.unique_id == unique_id:
                         return self.async_abort(reason="already_configured")
-                await self.async_set_unique_id(unique_id)
                 # Saved stream choices belong to the old address, so drop them.
                 options = {
                     key: value
                     for key, value in reconfigure_entry.options.items()
                     if key not in (CONF_BIN_TYPES, CONF_KNOWN_BIN_TYPES)
                 }
-                return self.async_update_reload_and_abort(reconfigure_entry, data=data, options=options)
+                # The unique id and title identify the household, so they must follow the
+                # new address; otherwise duplicate detection and the UI keep using the old one.
+                return self.async_update_reload_and_abort(
+                    reconfigure_entry,
+                    unique_id=unique_id,
+                    title=address.display_name,
+                    data=data,
+                    options=options,
+                )
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
             return self.async_create_entry(title=address.display_name, data=data)
@@ -196,7 +207,9 @@ class AussieBinNightConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_BIN_TYPES, default=list(available)): selector.SelectSelector(
-                        selector.SelectSelectorConfig(options=list(available), multiple=True, mode=selector.SelectSelectorMode.LIST)
+                        selector.SelectSelectorConfig(
+                            options=list(available), multiple=True, mode=selector.SelectSelectorMode.LIST
+                        )
                     )
                 }
             ),
@@ -212,14 +225,14 @@ class AussieBinNightConfigFlow(ConfigFlow, domain=DOMAIN):
 class AussieBinNightOptionsFlow(OptionsFlow):
     """Handle options for an existing Aussie Bin Night entry."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    def __init__(self, config_entry: AussieBinNightConfigEntry) -> None:
         """Initialize the options flow."""
         self._entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage update cadence, reminder timing, and shown bin streams."""
-        coordinator = self.hass.data.get(DOMAIN, {}).get(self._entry.entry_id)
-        available = tuple(coordinator.data.available_bin_types) if coordinator else ()
+        coordinator = getattr(self._entry, "runtime_data", None)
+        available = tuple(coordinator.data.available_bin_types) if coordinator and coordinator.data else ()
         # Offer every stream the provider currently returns, plus any already enabled.
         offered = list(dict.fromkeys([*enabled_bin_types(self._entry, available), *available]))
 
@@ -233,13 +246,13 @@ class AussieBinNightOptionsFlow(OptionsFlow):
                 {
                     vol.Required(
                         CONF_UPDATE_INTERVAL,
-                        default=defaults.get(CONF_UPDATE_INTERVAL, 7),
+                        default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_DAYS),
                     ): selector.NumberSelector(
                         selector.NumberSelectorConfig(min=1, max=30, step=1, mode=selector.NumberSelectorMode.BOX)
                     ),
                     vol.Required(
                         CONF_REMINDER_LEAD_TIME,
-                        default=defaults.get(CONF_REMINDER_LEAD_TIME, 12),
+                        default=defaults.get(CONF_REMINDER_LEAD_TIME, DEFAULT_REMINDER_LEAD_TIME_HOURS),
                     ): selector.NumberSelector(
                         selector.NumberSelectorConfig(min=0, max=72, step=1, mode=selector.NumberSelectorMode.BOX)
                     ),
@@ -247,7 +260,9 @@ class AussieBinNightOptionsFlow(OptionsFlow):
                         CONF_BIN_TYPES,
                         default=enabled_bin_types(self._entry, available),
                     ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(options=offered, multiple=True, mode=selector.SelectSelectorMode.LIST)
+                        selector.SelectSelectorConfig(
+                            options=offered, multiple=True, mode=selector.SelectSelectorMode.LIST
+                        )
                     ),
                 }
             ),
