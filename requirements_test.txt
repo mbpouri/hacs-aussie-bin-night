@@ -1,0 +1,5 @@
+# Test and lint dependencies. The pytest plugin pins the matching Home Assistant release,
+# and the manifest lists "frontend" as a dependency, so its package is needed too.
+pytest-homeassistant-custom-component==0.13.316
+home-assistant-frontend==20260128.6
+ruff==0.14.10

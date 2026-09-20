@@ -13,3 +13,17 @@ updates:
       prefix: "chore(deps)"
     labels:
       - dependencies
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      python-test-dependencies:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
