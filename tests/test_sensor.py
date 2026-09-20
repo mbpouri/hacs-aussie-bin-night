@@ -125,7 +125,10 @@ async def test_sensor_is_attached_to_a_household_device(hass):
     sensor = BinCollectionSensor(coordinator, entry, "general")
 
     assert sensor.device_info["identifiers"] == {(DOMAIN, entry.entry_id)}
-    assert sensor.device_info["name"] == entry.data["address"]
+    # The street address must not become the device name: it is shown when an integration
+    # is added and prefixes every entity's friendly name.
+    assert sensor.device_info["name"] == "Bin collection"
+    assert entry.data["address"] not in sensor.device_info["name"]
 
     coordinator.async_cancel_extra_refresh()
 

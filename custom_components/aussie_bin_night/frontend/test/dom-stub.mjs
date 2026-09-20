@@ -10,8 +10,12 @@ function escapeText(value) {
     .replace(/>/g, "&gt;");
 }
 
-export function installDomStub() {
-  const definitions = new Map();
+// `definedElements` are elements Home Assistant would already have defined by the time the
+// card runs. The card waits for "hui-view", so tests that want it to register straight away
+// leave the default, and tests of the waiting behaviour pass an empty list.
+export function installDomStub({ definedElements = ["hui-view"] } = {}) {
+  const definitions = new Map(definedElements.map((name) => [name, class {}]));
+  const waiting = new Map();
 
   class FakeShadowRoot {
     constructor() {
@@ -46,9 +50,15 @@ export function installDomStub() {
   globalThis.customElements = {
     define(name, ctor) {
       definitions.set(name, ctor);
+      for (const resolve of waiting.get(name) || []) resolve(ctor);
+      waiting.delete(name);
     },
     get(name) {
       return definitions.get(name);
+    },
+    whenDefined(name) {
+      if (definitions.has(name)) return Promise.resolve(definitions.get(name));
+      return new Promise((resolve) => waiting.set(name, [...(waiting.get(name) || []), resolve]));
     },
   };
   globalThis.window = globalThis;

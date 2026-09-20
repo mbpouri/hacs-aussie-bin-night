@@ -24,4 +24,9 @@ REQUEST_TIMEOUT_SECONDS = 15
 USER_AGENT = "HomeAssistant-AussieBinNight (+https://github.com/mbpouri/hacs-aussie-bin-night)"
 # How long to wait before retrying after a failed refresh that left a usable schedule in place.
 STALE_RETRY_DELAY = timedelta(hours=1)
-STATIC_URL = f"/api/{DOMAIN}/static"
+# Home Assistant's service worker treats any path containing /static/, /frontend_latest/ or
+# /frontend_es5/ as an immutable asset: it serves the cached copy and ignores the query string,
+# so a "?v=<hash>" would never bust the cache and upgrades would keep showing the old card.
+# The card therefore lives under a path that avoids those segments.
+STATIC_URL = f"/api/{DOMAIN}/card"
+DEVICE_NAME = "Bin collection"

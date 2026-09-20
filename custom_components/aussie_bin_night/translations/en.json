@@ -51,7 +51,7 @@
   "entity": {
     "sensor": {
       "collection": {
-        "name": "{bin_type} collection"
+        "name": "{bin_type}"
       }
     }
   },

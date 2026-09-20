@@ -40,9 +40,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_ADDRESS,
     CONF_REMINDER_LEAD_TIME,
     DEFAULT_REMINDER_LEAD_TIME_HOURS,
+    DEVICE_NAME,
     DOMAIN,
 )
 from .coordinator import AussieBinNightConfigEntry, AussieBinNightCoordinator, enabled_bin_types
@@ -131,7 +131,10 @@ class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEn
         self._attr_translation_placeholders = {"bin_type": bin_type.replace("_", " ").title()}
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
-            name=entry.data[CONF_ADDRESS],
+            # Not the street address: it is shown in the UI when an integration is added
+            # and prefixes every entity's friendly name. The entry title still identifies
+            # the household when there are several.
+            name=DEVICE_NAME,
             manufacturer="Bin Night Tonight",
             model="Household bin collection schedule",
         )

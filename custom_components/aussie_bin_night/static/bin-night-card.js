@@ -198,10 +198,27 @@ class BinNightCard extends HTMLElement {
   _escapeAttr(value) { return String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 }
 
-// The integration loads this module automatically, but a manually added dashboard
-// resource would load it a second time, and redefining an element throws.
-if (!customElements.get("bin-night-card")) {
-  customElements.define("bin-night-card", BinNightCard);
+// Home Assistant replaces `window.customElements` with a scoped-registry polyfill while its
+// frontend boots, and this module is loaded before that happens. An element defined straight
+// away lands only in the native registry, so HA's own `customElements.get()` lookup can't
+// see it: the card picker throws "Custom element not found" and its preview hangs on a
+// spinner. Waiting until HA has defined one of its own dashboard elements guarantees the
+// polyfill is in place, so the card registers where HA looks.
+const HA_READY_ELEMENT = "hui-view";
+
+function registerCard() {
+  // The integration loads this module automatically, but a manually added dashboard
+  // resource would load it a second time, and redefining an element throws.
+  if (customElements.get("bin-night-card")) return;
+  try {
+    customElements.define("bin-night-card", BinNightCard);
+  } catch (error) {
+    console.warn("bin-night-card could not be registered", error);
+    return;
+  }
   window.customCards = window.customCards || [];
   window.customCards.push({ type:"bin-night-card", name:"Bin Night", description:"Shows your upcoming household bin collections with day countdowns.", preview:true });
 }
+
+if (customElements.get(HA_READY_ELEMENT)) registerCard();
+else customElements.whenDefined(HA_READY_ELEMENT).then(registerCard);
