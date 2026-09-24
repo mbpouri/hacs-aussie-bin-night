@@ -4,9 +4,11 @@ import re
 from unittest.mock import patch
 
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.aussie_bin_night.const import DOMAIN, STATIC_URL
+from custom_components.aussie_bin_night.coordinator import ISSUE_KEYS
 
 from .conftest import SAMPLE_SCHEDULE, FakeBinNightTonightClient, sample_entry_data
 
@@ -55,3 +57,29 @@ async def test_the_household_device_is_not_named_after_the_address(hass):
     assert entry.data["address"] not in (device.name or "")
     assert hass.states.get("sensor.bin_general").name == "Bin collection General"
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_unloading_removes_every_repair_issue_for_the_entry(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data=sample_entry_data())
+    entry.add_to_hass(hass)
+
+    with patch(CLIENT_PATH, return_value=FakeBinNightTonightClient(schedule=SAMPLE_SCHEDULE)):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    issues = ir.async_get(hass)
+    for issue_key in ISSUE_KEYS:
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            f"{issue_key}_{entry.entry_id}",
+            is_fixable=False,
+            severity=ir.IssueSeverity.ERROR,
+            translation_key=issue_key,
+        )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+    assert "request_rejected" in ISSUE_KEYS
+    for issue_key in ISSUE_KEYS:
+        assert issues.async_get_issue(DOMAIN, f"{issue_key}_{entry.entry_id}") is None

@@ -16,6 +16,7 @@ from .client import (
     BinNightTonightConnectionError,
     BinNightTonightInvalidResponseError,
     BinNightTonightRateLimitedError,
+    BinNightTonightRequestRejectedError,
     CollectionSchedule,
 )
 from .const import (
@@ -78,6 +79,8 @@ class AussieBinNightConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "rate_limited"
             except BinNightTonightInvalidResponseError:
                 errors["base"] = "invalid_response"
+            except BinNightTonightRequestRejectedError:
+                errors["base"] = "request_rejected"
             else:
                 if self._candidates:
                     return await (
@@ -123,6 +126,8 @@ class AussieBinNightConfigFlow(ConfigFlow, domain=DOMAIN):
                     errors["base"] = "rate_limited"
                 except BinNightTonightInvalidResponseError:
                     errors["base"] = "invalid_response"
+                except BinNightTonightRequestRejectedError:
+                    errors["base"] = "request_rejected"
                 else:
                     if self._schedule.available_bin_types:
                         return await (

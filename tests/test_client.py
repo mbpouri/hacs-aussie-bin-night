@@ -11,6 +11,7 @@ from custom_components.aussie_bin_night.client import (
     BinNightTonightConnectionError,
     BinNightTonightInvalidResponseError,
     BinNightTonightRateLimitedError,
+    BinNightTonightRequestRejectedError,
     address_from_config,
 )
 
@@ -170,12 +171,35 @@ async def test_requests_identify_the_integration_with_a_user_agent(load_fixture)
     assert "AussieBinNight" in session.headers["User-Agent"]
 
 
-async def test_unexpected_client_error_status_is_an_invalid_response_not_a_connection_error():
-    session = _FakeSession(_FakeResponse(status=404))
+@pytest.mark.parametrize("status", [400, 403, 404, 410])
+async def test_a_refused_request_is_a_rejection_not_an_invalid_response(status):
+    session = _FakeSession(_FakeResponse(status=status))
     client = BinNightTonightClient(session)
 
-    with pytest.raises(BinNightTonightInvalidResponseError):
+    with pytest.raises(BinNightTonightRequestRejectedError, match=f"HTTP {status}"):
         await client.async_get_schedule(_address())
+
+
+async def test_get_schedule_sorts_events_by_date_keeping_same_date_order():
+    payload = {
+        "lgaId": "sample-city-council",
+        "events": [
+            {"date": "2026-10-06", "bins": ["general"]},
+            {"date": "2026-09-22", "bins": ["recycling"]},
+            {"date": "2026-09-29", "bins": ["general"]},
+            {"date": "2026-09-22", "bins": ["general"]},
+        ],
+    }
+    client = BinNightTonightClient(_FakeSession(_FakeResponse(payload=payload)))
+
+    schedule = await client.async_get_schedule(_address())
+
+    assert [(event.collection_date.isoformat(), event.bin_types) for event in schedule.events] == [
+        ("2026-09-22", ("recycling",)),
+        ("2026-09-22", ("general",)),
+        ("2026-09-29", ("general",)),
+        ("2026-10-06", ("general",)),
+    ]
 
 
 async def test_a_non_json_content_type_is_an_invalid_response():

@@ -18,6 +18,7 @@ from .client import (
     BinNightTonightConnectionError,
     BinNightTonightInvalidResponseError,
     BinNightTonightRateLimitedError,
+    BinNightTonightRequestRejectedError,
     CollectionSchedule,
     address_from_config,
 )
@@ -49,6 +50,8 @@ def enabled_bin_types(entry: ConfigEntry, available: tuple[str, ...]) -> list[st
 
 ISSUE_UNSUPPORTED_ADDRESS = "unsupported_address"
 ISSUE_INVALID_RESPONSE = "invalid_response"
+ISSUE_REQUEST_REJECTED = "request_rejected"
+ISSUE_KEYS = (ISSUE_UNSUPPORTED_ADDRESS, ISSUE_INVALID_RESPONSE, ISSUE_REQUEST_REJECTED)
 
 
 class AussieBinNightCoordinator(DataUpdateCoordinator[CollectionSchedule]):
@@ -90,19 +93,30 @@ class AussieBinNightCoordinator(DataUpdateCoordinator[CollectionSchedule]):
             self.serving_stale = True
             self._async_schedule_extra_refresh(dt_util.utcnow() + STALE_RETRY_DELAY)
             return self.data
-        except BinNightTonightInvalidResponseError as err:
-            self._async_raise_issue(ISSUE_INVALID_RESPONSE, ir.IssueSeverity.ERROR)
+        except (BinNightTonightInvalidResponseError, BinNightTonightRequestRejectedError) as err:
+            # Not served stale: the provider may have changed or dropped this address, so the
+            # sensors go unavailable. The failed refresh is often the scheduled extra refresh,
+            # so without a retry here nothing would try again until the next (up to 30-day)
+            # poll. The first refresh needs none: setup retries it via ConfigEntryNotReady.
+            rejected = isinstance(err, BinNightTonightRequestRejectedError)
+            self._async_raise_issue(
+                ISSUE_REQUEST_REJECTED if rejected else ISSUE_INVALID_RESPONSE, ir.IssueSeverity.ERROR
+            )
+            if self.data is not None:
+                self._async_schedule_extra_refresh(dt_util.utcnow() + STALE_RETRY_DELAY)
             raise UpdateFailed(str(err)) from err
 
         self.serving_stale = False
         self.last_successful_update = dt_util.utcnow()
         if schedule.available_bin_types:
-            self._async_clear_issue(ISSUE_INVALID_RESPONSE)
-            self._async_clear_issue(ISSUE_UNSUPPORTED_ADDRESS)
+            for issue_key in ISSUE_KEYS:
+                self._async_clear_issue(issue_key)
         else:
             # A well-formed response with no collection events at all almost always
             # means the provider has stopped covering this address.
             self._async_raise_issue(ISSUE_UNSUPPORTED_ADDRESS, ir.IssueSeverity.WARNING)
+            self._async_clear_issue(ISSUE_INVALID_RESPONSE)
+            self._async_clear_issue(ISSUE_REQUEST_REJECTED)
         self._async_schedule_next_extra_refresh(schedule)
         return schedule
 

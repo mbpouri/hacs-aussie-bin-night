@@ -12,12 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
 from .const import DOMAIN, STATIC_URL
-from .coordinator import (
-    ISSUE_INVALID_RESPONSE,
-    ISSUE_UNSUPPORTED_ADDRESS,
-    AussieBinNightConfigEntry,
-    AussieBinNightCoordinator,
-)
+from .coordinator import ISSUE_KEYS, AussieBinNightConfigEntry, AussieBinNightCoordinator
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
@@ -50,7 +45,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: AussieBinNightConfigEnt
     """Unload an Aussie Bin Night config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        for issue_key in (ISSUE_INVALID_RESPONSE, ISSUE_UNSUPPORTED_ADDRESS):
+        for issue_key in ISSUE_KEYS:
             ir.async_delete_issue(hass, DOMAIN, f"{issue_key}_{entry.entry_id}")
     return unload_ok
 

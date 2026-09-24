@@ -7,6 +7,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
+from custom_components.aussie_bin_night.client import BinNightTonightClient
 from custom_components.aussie_bin_night.const import (
     CONF_BIN_TYPES,
     CONF_KNOWN_BIN_TYPES,
@@ -17,6 +18,7 @@ from custom_components.aussie_bin_night.coordinator import AussieBinNightCoordin
 from custom_components.aussie_bin_night.sensor import BinCollectionSensor
 
 from .conftest import SAMPLE_SCHEDULE, FakeBinNightTonightClient, sample_entry_data
+from .test_client import _FakeResponse, _FakeSession
 
 CLIENT_PATH = "custom_components.aussie_bin_night.coordinator.BinNightTonightClient"
 
@@ -246,3 +248,37 @@ async def test_two_households_get_separate_sensors(hass):
     assert hass.states.get("sensor.bin_general_2") is not None
     await hass.config_entries.async_unload(first.entry_id)
     await hass.config_entries.async_unload(second.entry_id)
+
+
+async def test_sensors_use_the_earliest_date_from_an_out_of_order_payload(hass):
+    today = dt_util.now().date()
+
+    def iso(days: int) -> str:
+        return (today + timedelta(days=days)).isoformat()
+
+    payload = {
+        "lgaId": "sample-city-council",
+        "events": [
+            {"date": iso(17), "bins": ["general"]},
+            {"date": iso(3), "bins": ["general", "recycling"]},
+            {"date": iso(10), "bins": ["general", "recycling"]},
+        ],
+    }
+    entry = MockConfigEntry(domain=DOMAIN, data=sample_entry_data())
+    entry.add_to_hass(hass)
+    # A real client over a canned HTTP response, so parsing and sorting are both exercised.
+    client = BinNightTonightClient(_FakeSession(_FakeResponse(payload=payload)))
+
+    with patch(CLIENT_PATH, return_value=client):
+        coordinator = AussieBinNightCoordinator(hass, entry)
+        await coordinator.async_refresh()
+
+    assert [event.collection_date.isoformat() for event in coordinator.data.events] == [iso(3), iso(10), iso(17)]
+    general = BinCollectionSensor(coordinator, entry, "general")
+    assert general.native_value.isoformat() == iso(3)
+    assert general.extra_state_attributes["following_collection_date"] == iso(10)
+    recycling = BinCollectionSensor(coordinator, entry, "recycling")
+    assert recycling.native_value.isoformat() == iso(3)
+    assert recycling.extra_state_attributes["following_collection_date"] == iso(10)
+
+    coordinator.async_cancel_extra_refresh()
