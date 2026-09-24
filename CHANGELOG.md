@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- After an unexpected response, the refresh is now retried after an hour. Previously nothing retried it until the next scheduled poll (up to the configured update interval, as long as 30 days), so the sensors stayed unavailable all that time. The last schedule is still not kept in place for this kind of failure.
+- An HTTP 4xx response other than 429 (such as 403, 404 or 410) is now reported as the provider refusing the request, not as an unexpected response that suggests its API changed. It raises its own **Refused requests** repair issue, which clears once a refresh succeeds, is retried hourly, and shows a matching error during setup and reconfigure.
+- Collection events are now sorted by date. The sensors used the first matching event, so a schedule returned out of order could show a later collection as the next one, or the wrong `following_collection_date`.
+
+### Changed
+
+- Confirmed the minimum Home Assistant version in `hacs.json` (2024.11.0) against Home Assistant core: it is the first release with `ConfigFlow._get_reconfigure_entry` and the `config_entry` argument to `DataUpdateCoordinator`, both of which the integration uses.
+
 ## [1.0.3] - 2026-09-20
 
 ### Fixed

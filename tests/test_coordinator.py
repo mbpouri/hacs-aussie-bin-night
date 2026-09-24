@@ -11,12 +11,14 @@ from custom_components.aussie_bin_night.client import (
     BinNightTonightConnectionError,
     BinNightTonightInvalidResponseError,
     BinNightTonightRateLimitedError,
+    BinNightTonightRequestRejectedError,
     CollectionEvent,
     CollectionSchedule,
 )
 from custom_components.aussie_bin_night.const import CONF_REMINDER_LEAD_TIME, DOMAIN, STALE_RETRY_DELAY
 from custom_components.aussie_bin_night.coordinator import (
     ISSUE_INVALID_RESPONSE,
+    ISSUE_REQUEST_REJECTED,
     ISSUE_UNSUPPORTED_ADDRESS,
     AussieBinNightCoordinator,
     enabled_bin_types,
@@ -222,6 +224,65 @@ async def test_an_invalid_response_does_not_keep_serving_stale_data(hass):
 
     assert coordinator.last_update_success is False
     assert coordinator.serving_stale is False
+    coordinator.async_cancel_extra_refresh()
+
+
+async def test_an_invalid_response_is_retried_after_the_stale_retry_delay(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data=sample_entry_data())
+    entry.add_to_hass(hass)
+    coordinator = await _make_coordinator(hass, entry, schedule=SAMPLE_SCHEDULE)
+
+    failing = _CountingClient(schedule_exc=BinNightTonightInvalidResponseError("changed"))
+    coordinator._client = failing
+    await coordinator.async_refresh()
+    assert failing.fetch_count == 1
+    assert coordinator._unsub_extra_refresh is not None
+
+    async_fire_time_changed(hass, dt_util.utcnow() + STALE_RETRY_DELAY + timedelta(seconds=1))
+    await hass.async_block_till_done()
+
+    assert failing.fetch_count == 2
+    coordinator.async_cancel_extra_refresh()
+
+
+async def test_a_failed_first_refresh_schedules_no_extra_retry(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data=sample_entry_data())
+    entry.add_to_hass(hass)
+
+    coordinator = await _make_coordinator(
+        hass, entry, schedule_exc=BinNightTonightInvalidResponseError("unexpected shape")
+    )
+
+    # Setup turns a failed first refresh into ConfigEntryNotReady, which Home Assistant retries.
+    assert coordinator._unsub_extra_refresh is None
+
+
+async def test_a_rejected_request_raises_its_own_repair_issue_and_retries(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data=sample_entry_data())
+    entry.add_to_hass(hass)
+    coordinator = await _make_coordinator(hass, entry, schedule=SAMPLE_SCHEDULE)
+
+    failing = _CountingClient(schedule_exc=BinNightTonightRequestRejectedError("HTTP 403"))
+    coordinator._client = failing
+    await coordinator.async_refresh()
+
+    assert coordinator.last_update_success is False
+    assert coordinator.serving_stale is False
+    issues = ir.async_get(hass)
+    issue = issues.async_get_issue(DOMAIN, _issue_id(ISSUE_REQUEST_REJECTED, entry))
+    assert issue is not None
+    assert issue.severity == ir.IssueSeverity.ERROR
+    assert issue.translation_placeholders == {"address": entry.title}
+    assert issues.async_get_issue(DOMAIN, _issue_id(ISSUE_INVALID_RESPONSE, entry)) is None
+
+    recovered = _CountingClient(schedule=SAMPLE_SCHEDULE)
+    coordinator._client = recovered
+    async_fire_time_changed(hass, dt_util.utcnow() + STALE_RETRY_DELAY + timedelta(seconds=1))
+    await hass.async_block_till_done()
+
+    assert recovered.fetch_count == 1
+    assert coordinator.last_update_success is True
+    assert issues.async_get_issue(DOMAIN, _issue_id(ISSUE_REQUEST_REJECTED, entry)) is None
     coordinator.async_cancel_extra_refresh()
 
 

@@ -11,7 +11,8 @@
       "invalid_response": "Bin Night Tonight returned an unexpected response.",
       "no_addresses_found": "No matching Australian street addresses were found.",
       "no_collections_found": "No bin collections were found for this address.",
-      "rate_limited": "Bin Night Tonight is rate-limiting requests. Wait a moment and try again."
+      "rate_limited": "Bin Night Tonight is rate-limiting requests. Wait a moment and try again.",
+      "request_rejected": "Bin Night Tonight refused the request. Try again later, or try a different address."
     },
     "step": {
       "user": {
@@ -76,6 +77,10 @@
     "invalid_response": {
       "title": "Unexpected response from Bin Night Tonight for {address}",
       "description": "The provider returned data this integration does not understand, which usually means its API changed. Please open an issue on the Aussie Bin Night GitHub repository describing this."
+    },
+    "request_rejected": {
+      "title": "Bin Night Tonight refused requests for {address}",
+      "description": "The provider refused to return a schedule for this address, so its bin sensors are unavailable. The integration retries every hour and removes this notice once the provider responds again. If it persists, confirm the address is correct and use **Reconfigure** on the Aussie Bin Night integration to search again."
     }
   }
 }
