@@ -28,6 +28,10 @@ class BinNightTonightRateLimitedError(BinNightTonightError):
     """Raised when the API throttles requests with an HTTP 429 response."""
 
 
+class BinNightTonightRequestRejectedError(BinNightTonightError):
+    """Raised when the API refuses a request with a 4xx status other than 429."""
+
+
 @dataclass(frozen=True, slots=True)
 class AddressCandidate:
     """The selected-address data required for a schedule lookup."""
@@ -121,6 +125,9 @@ class BinNightTonightClient:
             if streams:
                 parsed_events.append(CollectionEvent(collection_date, streams))
 
+        # The sensors take the first matching event, so they rely on date order. The sort is
+        # stable, so events on the same date keep the provider's order.
+        parsed_events.sort(key=lambda event: event.collection_date)
         return CollectionSchedule(council_id, tuple(parsed_events))
 
     async def _async_get_json(self, path: str, params: dict[str, str]) -> dict[str, Any]:
@@ -136,7 +143,7 @@ class BinNightTonightClient:
                             f"Bin Night Tonight rate-limited this request; retry after {retry_after}"
                         )
                     if 400 <= response.status < 500:
-                        raise BinNightTonightInvalidResponseError(
+                        raise BinNightTonightRequestRejectedError(
                             f"Bin Night Tonight rejected the request with HTTP {response.status}"
                         )
                     response.raise_for_status()

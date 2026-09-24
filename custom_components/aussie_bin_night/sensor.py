@@ -7,7 +7,8 @@ the Bin Night Tonight API itself; keep the two in sync if this contract changes)
 - State: an ISO date (`SensorDeviceClass.DATE`) for the next collection, or
   `unknown` if the schedule currently has no upcoming event for this stream.
   The entity is `unavailable` only when the last coordinator refresh failed
-  (connection, rate limit, or malformed response), never for a merely empty
+  (malformed response, refused request, or a connection problem or rate limit
+  before any schedule was fetched), never for a merely empty
   schedule.
 - `collection_date` (str, ISO date): present only alongside a non-`unknown` state;
   duplicates the native value for template convenience.

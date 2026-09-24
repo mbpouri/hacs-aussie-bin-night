@@ -9,6 +9,7 @@ from custom_components.aussie_bin_night.client import (
     BinNightTonightConnectionError,
     BinNightTonightInvalidResponseError,
     BinNightTonightRateLimitedError,
+    BinNightTonightRequestRejectedError,
 )
 from custom_components.aussie_bin_night.const import CONF_ADDRESS, CONF_BIN_TYPES, CONF_COUNCIL_ID, DOMAIN
 
@@ -104,6 +105,34 @@ async def test_schedule_invalid_response_shows_error(hass):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {"address": "0"})
 
     assert result["errors"] == {"base": "invalid_response"}
+
+
+async def test_search_request_rejected_shows_error(hass):
+    fake_client = FakeBinNightTonightClient(search_exc=BinNightTonightRequestRejectedError("HTTP 403"))
+    with patch(CLIENT_PATH, return_value=fake_client):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"address": "anywhere"})
+
+    assert result["step_id"] == "user"
+    assert result["errors"] == {"base": "request_rejected"}
+
+
+async def test_schedule_request_rejected_shows_error(hass):
+    fake_client = FakeBinNightTonightClient(
+        candidates=[SAMPLE_CANDIDATE],
+        schedule_exc=BinNightTonightRequestRejectedError("HTTP 404"),
+    )
+    with patch(CLIENT_PATH, return_value=fake_client):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"address": "1 example street"})
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"address": "0"})
+
+    assert result["step_id"] == "select_address"
+    assert result["errors"] == {"base": "request_rejected"}
 
 
 async def test_duplicate_address_aborts(hass):
