@@ -49,6 +49,7 @@ async def test_successful_refresh_returns_schedule(hass):
 
     assert coordinator.last_update_success is True
     assert coordinator.data == SAMPLE_SCHEDULE
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -116,6 +117,7 @@ async def test_a_recovered_fetch_clears_previous_repair_issues(hass):
     coordinator._client = FakeBinNightTonightClient(schedule=SAMPLE_SCHEDULE)
     await coordinator.async_refresh()
     assert ir.async_get(hass).async_get_issue(DOMAIN, _issue_id(ISSUE_UNSUPPORTED_ADDRESS, entry)) is None
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -146,6 +148,7 @@ async def test_schedules_a_refresh_shortly_before_the_soonest_reminder(hass):
         await hass.async_block_till_done()
 
     assert fetch_count == 2
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -154,6 +157,7 @@ async def test_cancel_extra_refresh_is_a_no_op_when_nothing_is_scheduled(hass):
     entry.add_to_hass(hass)
     coordinator = AussieBinNightCoordinator(hass, entry)
 
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -199,6 +203,7 @@ async def test_a_transient_failure_keeps_serving_the_last_schedule_then_recovers
 
     assert recovered.fetch_count == 1
     assert coordinator.serving_stale is False
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -212,6 +217,7 @@ async def test_a_rate_limit_also_keeps_serving_the_last_schedule(hass):
 
     assert coordinator.last_update_success is True
     assert coordinator.serving_stale is True
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -225,6 +231,7 @@ async def test_an_invalid_response_does_not_keep_serving_stale_data(hass):
 
     assert coordinator.last_update_success is False
     assert coordinator.serving_stale is False
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -243,6 +250,7 @@ async def test_an_invalid_response_is_retried_after_the_stale_retry_delay(hass):
     await hass.async_block_till_done()
 
     assert failing.fetch_count == 2
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -284,6 +292,7 @@ async def test_a_rejected_request_raises_its_own_repair_issue_and_retries(hass):
     assert recovered.fetch_count == 1
     assert coordinator.last_update_success is True
     assert issues.async_get_issue(DOMAIN, _issue_id(ISSUE_REQUEST_REJECTED, entry)) is None
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -319,6 +328,7 @@ async def test_a_transient_failure_after_a_rejection_does_not_restore_the_stale_
 
     assert recovered.fetch_count == 1
     assert coordinator.last_update_success is True
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -329,6 +339,7 @@ async def test_a_successful_refresh_records_when_it_happened(hass):
     coordinator = await _make_coordinator(hass, entry, schedule=SAMPLE_SCHEDULE)
 
     assert coordinator.last_successful_update is not None
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
@@ -353,6 +364,7 @@ async def test_refreshes_the_day_after_the_last_known_collection(hass):
         await hass.async_block_till_done()
 
     assert client.fetch_count == 2
+    await coordinator.async_shutdown()
     coordinator.async_cancel_extra_refresh()
 
 
