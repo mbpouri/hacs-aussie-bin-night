@@ -88,6 +88,11 @@ class AussieBinNightCoordinator(DataUpdateCoordinator[CollectionSchedule]):
             # which has nothing to fall back on, fails outright.
             if self.data is None:
                 raise UpdateFailed(str(err)) from err
+            # After an invalid or refused response the cached schedule is no longer trusted,
+            # so only a valid response may make the sensors available again. Keep retrying.
+            if not self.last_update_success:
+                self._async_schedule_extra_refresh(dt_util.utcnow() + STALE_RETRY_DELAY)
+                raise UpdateFailed(str(err)) from err
             log = self.logger.debug if self.serving_stale else self.logger.warning
             log("Could not refresh the bin schedule (%s); keeping the last known schedule and retrying", err)
             self.serving_stale = True

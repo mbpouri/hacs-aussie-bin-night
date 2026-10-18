@@ -3,6 +3,7 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+import pytest
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
@@ -283,6 +284,41 @@ async def test_a_rejected_request_raises_its_own_repair_issue_and_retries(hass):
     assert recovered.fetch_count == 1
     assert coordinator.last_update_success is True
     assert issues.async_get_issue(DOMAIN, _issue_id(ISSUE_REQUEST_REJECTED, entry)) is None
+    coordinator.async_cancel_extra_refresh()
+
+
+@pytest.mark.parametrize(
+    "rejection", [BinNightTonightInvalidResponseError("changed"), BinNightTonightRequestRejectedError("HTTP 403")]
+)
+@pytest.mark.parametrize(
+    "transient", [BinNightTonightConnectionError("down"), BinNightTonightRateLimitedError("slow down")]
+)
+async def test_a_transient_failure_after_a_rejection_does_not_restore_the_stale_schedule(hass, rejection, transient):
+    entry = MockConfigEntry(domain=DOMAIN, data=sample_entry_data())
+    entry.add_to_hass(hass)
+    coordinator = await _make_coordinator(hass, entry, schedule=SAMPLE_SCHEDULE)
+
+    coordinator._client = _CountingClient(schedule_exc=rejection)
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success is False
+
+    flaky = _CountingClient(schedule_exc=transient)
+    coordinator._client = flaky
+    async_fire_time_changed(hass, dt_util.utcnow() + STALE_RETRY_DELAY + timedelta(seconds=1))
+    await hass.async_block_till_done()
+
+    assert flaky.fetch_count == 1
+    assert coordinator.last_update_success is False
+    assert coordinator.serving_stale is False
+    assert coordinator._unsub_extra_refresh is not None
+
+    recovered = _CountingClient(schedule=SAMPLE_SCHEDULE)
+    coordinator._client = recovered
+    async_fire_time_changed(hass, dt_util.utcnow() + 2 * STALE_RETRY_DELAY + timedelta(seconds=2))
+    await hass.async_block_till_done()
+
+    assert recovered.fetch_count == 1
+    assert coordinator.last_update_success is True
     coordinator.async_cancel_extra_refresh()
 
 
