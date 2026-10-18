@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-10-18
+
 ### Fixed
 
 - After an unexpected response, the refresh is now retried after an hour. Previously nothing retried it until the next scheduled poll (up to the configured update interval, as long as 30 days), so the sensors stayed unavailable all that time. The last schedule is still not kept in place for this kind of failure.
