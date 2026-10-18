@@ -168,7 +168,7 @@ async def test_requests_identify_the_integration_with_a_user_agent(load_fixture)
 
     await BinNightTonightClient(session).async_search_addresses("anything")
 
-    assert "AussieBinNight" in session.headers["User-Agent"]
+    assert session.headers["User-Agent"] == "binnighttonight-hacs/1.0"
 
 
 @pytest.mark.parametrize("status", [400, 403, 404, 410])
