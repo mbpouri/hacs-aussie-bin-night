@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-26
+
 ### Added
 
 - A `status` sensor attribute: `upcoming` from `reminder_time` until the collection date, since the bins go out to the kerb the night before; `today` on the collection date; otherwise `scheduled`. The sensor is rewritten at `reminder_time`, without contacting the provider.
