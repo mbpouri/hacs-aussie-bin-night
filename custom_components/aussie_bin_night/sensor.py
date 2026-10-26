@@ -17,6 +17,9 @@ the Bin Night Tonight API itself; keep the two in sync if this contract changes)
   non-`unknown` state; the configured reminder lead time before the start of
   `collection_date`. It is an attribute, so use it from a template trigger; the
   `time` trigger only accepts entities, not attributes.
+- `status` (str): present only alongside a non-`unknown` state; `today` on
+  `collection_date`, `upcoming` from `reminder_time` until then (the night the
+  bins go out to the kerb), otherwise `scheduled`.
 - `following_collection_date` (str, ISO date, optional): the collection after
   the current one, when the schedule includes it.
 - `council` (str): readable council name, e.g. "Sample City Council"; always present.
@@ -32,11 +35,11 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import ATTR_ATTRIBUTION
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.event import async_track_point_in_time, async_track_time_change
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
@@ -56,6 +59,11 @@ ATTR_BIN_COLOUR = "bin_colour"
 ATTR_BIN_TYPE = "bin_type"
 ATTR_FOLLOWING_COLLECTION_DATE = "following_collection_date"
 ATTR_REMINDER_TIME = "reminder_time"
+ATTR_STATUS = "status"
+
+STATUS_SCHEDULED = "scheduled"
+STATUS_UPCOMING = "upcoming"
+STATUS_TODAY = "today"
 
 BIN_COLOURS = {
     "general": "red",
@@ -124,6 +132,7 @@ class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEn
     ) -> None:
         """Initialize a bin collection sensor."""
         super().__init__(coordinator)
+        self._unsub_reminder: CALLBACK_TYPE | None = None
         self._entry = entry
         self._bin_type = bin_type
         self._attr_unique_id = f"{entry.entry_id}_{bin_type}"
@@ -141,21 +150,53 @@ class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEn
         )
 
     async def async_added_to_hass(self) -> None:
-        """Re-evaluate at local midnight so the date and `days_until` roll over daily.
+        """Re-evaluate at local midnight and at the reminder time.
 
         The coordinator only refreshes about weekly, but this sensor's state is
-        derived from today's date, so it must be rewritten each day without
-        another provider request.
+        derived from the current time: the date and `days_until` roll over at
+        midnight, and `status` turns `upcoming` at `reminder_time`. Both must be
+        rewritten without another provider request.
         """
         await super().async_added_to_hass()
         self.async_on_remove(
             async_track_time_change(self.hass, self._async_handle_midnight, hour=0, minute=0, second=0)
         )
+        self.async_on_remove(self._async_cancel_reminder)
+        self._async_schedule_reminder()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Follow a schedule change, which may move the next reminder."""
+        self._async_schedule_reminder()
+        super()._handle_coordinator_update()
 
     @callback
     def _async_handle_midnight(self, _now: datetime) -> None:
         """Write the state again now that the local date has changed."""
+        # Once a collection day passes, the next event's reminder takes over.
+        self._async_schedule_reminder()
         self.async_write_ha_state()
+
+    @callback
+    def _async_handle_reminder(self, _now: datetime) -> None:
+        """Write the state again now that `status` has turned `upcoming`."""
+        self._unsub_reminder = None
+        self.async_write_ha_state()
+
+    @callback
+    def _async_schedule_reminder(self) -> None:
+        """Replace any pending status change with one at the next reminder time."""
+        self._async_cancel_reminder()
+        event = self._next_event
+        if event and (reminder := self._reminder_time(event.collection_date)) > dt_util.utcnow():
+            self._unsub_reminder = async_track_point_in_time(self.hass, self._async_handle_reminder, reminder)
+
+    @callback
+    def _async_cancel_reminder(self) -> None:
+        """Cancel any pending status change."""
+        if self._unsub_reminder is not None:
+            self._unsub_reminder()
+            self._unsub_reminder = None
 
     @property
     def native_value(self) -> date | None:
@@ -176,11 +217,14 @@ class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEn
         if event:
             attributes[ATTR_COLLECTION_DATE] = event.collection_date.isoformat()
             attributes[ATTR_DAYS_UNTIL] = (event.collection_date - self._today).days
-            lead_hours = int(
-                self._entry.options.get(CONF_REMINDER_LEAD_TIME, DEFAULT_REMINDER_LEAD_TIME_HOURS)
-            )
-            collection_start = dt_util.start_of_local_day(event.collection_date)
-            attributes[ATTR_REMINDER_TIME] = (collection_start - timedelta(hours=lead_hours)).isoformat()
+            reminder = self._reminder_time(event.collection_date)
+            attributes[ATTR_REMINDER_TIME] = reminder.isoformat()
+            if event.collection_date == self._today:
+                attributes[ATTR_STATUS] = STATUS_TODAY
+            elif dt_util.now() >= reminder:
+                attributes[ATTR_STATUS] = STATUS_UPCOMING
+            else:
+                attributes[ATTR_STATUS] = STATUS_SCHEDULED
             following_event = next(
                 (
                     candidate
@@ -207,6 +251,11 @@ class BinCollectionSensor(CoordinatorEntity[AussieBinNightCoordinator], SensorEn
             ),
             None,
         )
+
+    def _reminder_time(self, collection_date: date) -> datetime:
+        """Return the configured reminder lead time before the start of a collection date."""
+        lead_hours = int(self._entry.options.get(CONF_REMINDER_LEAD_TIME, DEFAULT_REMINDER_LEAD_TIME_HOURS))
+        return dt_util.start_of_local_day(collection_date) - timedelta(hours=lead_hours)
 
     @property
     def _today(self) -> date:

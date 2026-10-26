@@ -179,6 +179,28 @@ test("gives each row one accessible summary, with attribute-breaking characters 
   assert.ok(html.includes('aria-label="A&quot;b&lt;c&gt;, Friday 25 September, 3 days away"'), html);
 });
 
+test("shows Tonight once the sensor status turns upcoming the night before", () => {
+  const card = createCard({ entities: ["sensor.bin_general", "sensor.bin_recycling"] });
+  card.hass = {
+    states: {
+      "sensor.bin_general": sensor("general", "2026-09-20", 1, { status: "upcoming" }),
+      "sensor.bin_recycling": sensor("recycling", "2026-09-20", 1, { status: "scheduled" }),
+    },
+  };
+  const html = card.shadowRoot.innerHTML;
+  assert.match(html, /General waste<\/div>.*?<div class="num today">Tonight<\/div><div class="unit">Put bins out<\/div>/);
+  assert.match(html, /Recycling<\/div>.*?<div class="num">1<\/div><div class="unit">day away<\/div>/);
+  assert.ok(html.includes('aria-label="General waste, Sunday 20 September, put bins out tonight"'), html);
+
+  card.hass = {
+    states: {
+      "sensor.bin_general": sensor("general", "2026-09-20", 1, { status: "scheduled" }),
+      "sensor.bin_recycling": sensor("recycling", "2026-09-20", 1, { status: "upcoming" }),
+    },
+  };
+  assert.match(card.shadowRoot.innerHTML, /Recycling<\/div>.*?Tonight/, "a status change alone should re-render");
+});
+
 test("shows a distinct message for a stream with no upcoming date versus an unavailable one", () => {
   const card = createCard({ entities: ["sensor.bin_hard", "sensor.bin_general"] });
   card.hass = {

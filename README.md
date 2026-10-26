@@ -63,7 +63,7 @@ After setup, you can adjust via **Configure**:
 | Option             | Description                                                       | Default       |
 | ------------------ | ----------------------------------------------------------------- | ------------- |
 | Update interval    | Days between schedule refreshes (1–30)                            | 7 (weekly)    |
-| Reminder lead time | Hours before the collection date that `reminder_time` should fall | 12            |
+| Reminder lead time | Hours before the collection date that `reminder_time` should fall, and `status` turns `upcoming` | 5             |
 | Bin types shown    | Which bin sensors to create; deselecting one removes its sensor   | All available |
 
 Beyond the regular refresh, the integration schedules extra ones at two points: shortly before each `reminder_time`, so an automation firing on it sees up-to-date data even if a public holiday moved the collection since the last poll; and the day after the last collection in the current schedule, so sensors don't sit on `unknown` waiting for the next poll.
@@ -86,6 +86,7 @@ Each sensor exposes attributes:
 - `days_until` — number of days until next collection; recalculated at local midnight each day, without contacting the provider
 - `collection_date` — ISO date of next collection
 - `reminder_time` — timestamp, the configured reminder lead time before the start of `collection_date`; use it in a template trigger (see [Example Automation](#-example-automation))
+- `status` — `upcoming` from `reminder_time` until the collection date (the night the bins go out to the kerb), `today` on the collection date, otherwise `scheduled`; it changes at `reminder_time` itself, without contacting the provider
 - `following_collection_date` — ISO date of the collection after this one, when the schedule includes it
 - `council` — detected council/LGA name, e.g. "Sample City Council"
 - `council_id` — the provider's raw LGA identifier, e.g. `sample-city-council`
@@ -170,7 +171,7 @@ The visual editor lets you pick specific sensors, and shows the result as you ch
 
 ![The Bin Night card's visual editor](<custom_components/aussie_bin_night/brand/screenshot-card-editor.png>)
 
-The card shows one row per bin with its next collection, soonest first: a shaded bin icon with a lid in the stream's colour, the stream name (for example "General waste"), the date (for example "Tuesday 22 September"), and a countdown ("Today", or a number with "days away"). Tap a row (or focus it and press Enter or Space) to open that sensor's details. A stream with no upcoming collection is listed at the end as "No upcoming collection", and a sensor that is unavailable or missing as "Unavailable".
+The card shows one row per bin with its next collection, soonest first: a shaded bin icon with a lid in the stream's colour, the stream name (for example "General waste"), the date (for example "Tuesday 22 September"), and a countdown ("Today", "Tonight" with "Put bins out" once the sensor's `status` is `upcoming`, or a number with "days away"). Tap a row (or focus it and press Enter or Space) to open that sensor's details. A stream with no upcoming collection is listed at the end as "No upcoming collection", and a sensor that is unavailable or missing as "Unavailable".
 
 ---
 

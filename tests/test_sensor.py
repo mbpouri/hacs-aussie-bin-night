@@ -112,6 +112,7 @@ async def test_sensor_has_no_upcoming_date_when_the_stream_is_absent(hass):
     assert "collection_date" not in attributes
     assert "days_until" not in attributes
     assert "reminder_time" not in attributes
+    assert "status" not in attributes
     assert attributes["council"] == "Sample City Council"
     assert attributes["council_id"] == SAMPLE_SCHEDULE.council_id
     assert attributes["bin_colour"] == "purple"
@@ -154,6 +155,54 @@ async def test_days_until_rolls_over_at_local_midnight(hass, freezer):
 
     assert after == before - 1
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_status_turns_upcoming_at_the_reminder_time_and_today_at_midnight(hass, freezer):
+    entry = MockConfigEntry(domain=DOMAIN, data=sample_entry_data(), options={CONF_REMINDER_LEAD_TIME: 5})
+    entry.add_to_hass(hass)
+    collection_date = SAMPLE_SCHEDULE.events[0].collection_date
+    reminder = dt_util.start_of_local_day(collection_date) - timedelta(hours=5)
+
+    with patch(CLIENT_PATH, return_value=FakeBinNightTonightClient(schedule=SAMPLE_SCHEDULE)):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        assert hass.states.get("sensor.bin_general").attributes["status"] == "scheduled"
+
+        freezer.move_to(reminder - timedelta(seconds=1))
+        async_fire_time_changed(hass, reminder - timedelta(seconds=1))
+        await hass.async_block_till_done()
+        assert hass.states.get("sensor.bin_general").attributes["status"] == "scheduled"
+
+        # The reminder time itself, not a coordinator refresh, rewrites the state.
+        freezer.move_to(reminder)
+        async_fire_time_changed(hass, reminder)
+        await hass.async_block_till_done()
+        state = hass.states.get("sensor.bin_general")
+        assert state.attributes["status"] == "upcoming"
+        assert state.attributes["days_until"] == 1
+
+        midnight = dt_util.start_of_local_day(collection_date)
+        freezer.move_to(midnight)
+        async_fire_time_changed(hass, midnight)
+        await hass.async_block_till_done()
+        state = hass.states.get("sensor.bin_general")
+        assert state.attributes["status"] == "today"
+        assert state.attributes["days_until"] == 0
+
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_reminder_lead_time_defaults_to_five_hours(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data=sample_entry_data())
+    entry.add_to_hass(hass)
+    coordinator = await _make_ready_coordinator(hass, entry)
+
+    sensor = BinCollectionSensor(coordinator, entry, "general")
+    expected = dt_util.start_of_local_day(SAMPLE_SCHEDULE.events[0].collection_date) - timedelta(hours=5)
+
+    assert sensor.extra_state_attributes["reminder_time"] == expected.isoformat()
+
+    coordinator.async_cancel_extra_refresh()
 
 
 async def test_a_stream_that_appears_later_gets_a_sensor(hass):

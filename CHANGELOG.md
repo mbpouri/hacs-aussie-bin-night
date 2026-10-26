@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- A `status` sensor attribute: `upcoming` from `reminder_time` until the collection date, since the bins go out to the kerb the night before; `today` on the collection date; otherwise `scheduled`. The sensor is rewritten at `reminder_time`, without contacting the provider.
+- Card: once a stream's `status` is `upcoming`, its row shows a highlighted "Tonight" with "Put bins out" instead of "1 day away".
+
+### Changed
+
+- The default reminder lead time is now 5 hours (7 pm the night before) instead of 12. Entries that saved a lead time in **Configure** keep it.
+
 ## [1.0.4] - 2026-10-18
 
 ### Fixed

@@ -1,8 +1,9 @@
 // Renders strictly from entity state/attributes (never calls the Bin Night Tonight
 // API directly). Contract, defined in custom_components/aussie_bin_night/sensor.py:
 // state is an ISO date or "unknown"/"unavailable"; attributes used here are
-// `collection_date` (ISO date) and `days_until` (int), present only when the state
-// isn't "unknown", plus `bin_type`, `bin_colour` and `attribution`. With no
+// `collection_date` (ISO date), `days_until` (int) and `status` ("scheduled",
+// "upcoming" from the reminder time the night before, or "today"), present only
+// when the state isn't "unknown", plus `bin_type`, `bin_colour` and `attribution`. With no
 // `entities` configured the card discovers this integration's sensors itself. It
 // shows one row per bin with its next collection, soonest first. Each real row is
 // a keyboard-focusable button that opens the sensor's more-info dialog.
@@ -70,7 +71,7 @@ class BinNightCard extends HTMLElement {
       const state = states[id];
       if (!state) return id;
       const a = state.attributes;
-      return [id, state.state, a.collection_date, a.days_until, a.bin_type, a.bin_colour].join("|");
+      return [id, state.state, a.collection_date, a.days_until, a.status, a.bin_type, a.bin_colour].join("|");
     });
     // Sample rows are dated relative to today, so they must refresh daily.
     return [this._hass.locale?.language, ids.length ? "" : new Date().toDateString(), ...parts].join("\n");
@@ -137,10 +138,12 @@ class BinNightCard extends HTMLElement {
     const name = this._label(id, a);
     const when = this._formatDate(date);
     const today = days === 0;
-    const num = today ? "Today" : days === null ? "" : String(days);
-    const unit = days === null ? "" : `${days === 1 ? "day" : "days"} away`;
-    const summary = `${name}, ${when}${days === null ? "" : today ? ", today" : `, ${days} ${unit}`}`;
-    const body = `<div class="icon" aria-hidden="true">${this._bin(LID_COLOURS[a.bin_colour])}</div><div class="info"><div class="name">${this._escape(name)}</div><div class="date">${this._escape(when)}</div></div><div class="count"><div class="num${today ? " today" : ""}">${this._escape(num)}</div><div class="unit">${this._escape(today ? "0 days away" : unit)}</div></div>`;
+    // From the reminder time the night before, the bins need to go out to the kerb.
+    const tonight = !today && a.status === "upcoming";
+    const num = today ? "Today" : tonight ? "Tonight" : days === null ? "" : String(days);
+    const unit = today ? "0 days away" : tonight ? "Put bins out" : days === null ? "" : `${days === 1 ? "day" : "days"} away`;
+    const summary = `${name}, ${when}${days === null ? "" : today ? ", today" : tonight ? ", put bins out tonight" : `, ${days} ${unit}`}`;
+    const body = `<div class="icon" aria-hidden="true">${this._bin(LID_COLOURS[a.bin_colour])}</div><div class="info"><div class="name">${this._escape(name)}</div><div class="date">${this._escape(when)}</div></div><div class="count"><div class="num${today || tonight ? " today" : ""}">${this._escape(num)}</div><div class="unit">${this._escape(unit)}</div></div>`;
     return this._item(body, summary, sample ? null : id);
   }
 
