@@ -2,4 +2,4 @@
 # and the manifest lists "frontend" as a dependency, so its package is needed too.
 pytest-homeassistant-custom-component==0.13.373
 home-assistant-frontend==20260930.4
-ruff==0.17.1
+ruff==0.17.2
